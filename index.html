@@ -3,12 +3,195 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>Typing Form Coach</title>
+  <!-- Empty icon so the browser does not request /favicon.ico (a 404 on GitHub Pages). -->
   <link rel="icon" href="data:,">
+  <!-- All paths are relative (no leading slash) so the app works under /repo-name/ on GitHub Pages. -->
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <h1>Typing Form Coach</h1>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <header class="app-header">
+    <h1>Typing Form Coach</h1>
+    <p class="privacy-line" id="privacy-line">
+      <span aria-hidden="true">&#128274;</span> Video stays on this device. Nothing is uploaded.
+    </p>
+  </header>
+
+  <!-- Problems that affect every screen (insecure page, slow tracking). -->
+  <div id="global-error" class="message message-error" role="alert" hidden></div>
+  <div id="tracking-warning" class="message message-warning" role="status" hidden></div>
+
+  <main id="main">
+    <!-- ===== Screen 1: Setup ===== -->
+    <section class="screen" id="screen-setup" data-screen="setup" aria-labelledby="setup-title" hidden>
+      <h2 id="setup-title">Step 1: Set up your camera</h2>
+      <div class="two-column">
+        <div class="stage-slot" id="setup-stage-slot"></div>
+        <div class="panel">
+          <div id="setup-error" class="message message-error" role="alert" hidden></div>
+          <div id="setup-notice" class="message message-info" role="status" hidden></div>
+
+          <label class="field-label" for="camera-picker">Camera</label>
+          <select id="camera-picker" disabled>
+            <option value="">Looking for cameras...</option>
+          </select>
+
+          <fieldset class="field-group">
+            <legend>Where is the camera?</legend>
+            <label><input type="radio" name="camera-facing" value="above" checked> Above the keyboard, looking down at my hands</label>
+            <label><input type="radio" name="camera-facing" value="behind"> Behind the keyboard, looking at me</label>
+          </fieldset>
+          <label class="checkbox-label"><input type="checkbox" id="mirrored-toggle"> Image is mirrored (swap left and right)</label>
+          <p class="hint">Look at the <strong>L</strong> and <strong>R</strong> labels on your wrists in the video. If they are on the wrong hands, change the setting above.</p>
+
+          <ul class="indicators" aria-label="Tracking status">
+            <li id="indicator-left" data-on="false"><span class="indicator-icon" aria-hidden="true"></span> <span class="indicator-text">Left hand visible</span></li>
+            <li id="indicator-right" data-on="false"><span class="indicator-icon" aria-hidden="true"></span> <span class="indicator-text">Right hand visible</span></li>
+            <li>Detection speed: <span id="setup-fps">--</span> fps</li>
+          </ul>
+          <p class="tip" id="positioning-tip" aria-live="polite">Put both hands on the keyboard where the camera can see them.</p>
+          <p class="status-line" id="setup-status" role="status">Starting camera...</p>
+
+          <div class="button-row">
+            <button type="button" class="primary" id="setup-continue" disabled>Continue</button>
+            <button type="button" class="secondary" id="setup-skip-camera">Practice without the camera</button>
+          </div>
+          <p class="hint" id="setup-continue-hint">Continue unlocks after both hands are visible for 1 second.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Screen 2: Calibrate ===== -->
+    <section class="screen" id="screen-calibrate" data-screen="calibrate" aria-labelledby="calibrate-title" hidden>
+      <h2 id="calibrate-title">Step 2: Calibrate your home row</h2>
+      <div class="two-column">
+        <div class="stage-slot" id="calibrate-stage-slot"></div>
+        <div class="panel">
+          <ol class="instructions">
+            <li>Rest your left fingers on <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> <kbd>F</kbd> and your right fingers on <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd> <kbd>;</kbd>. Feel for the bumps on <kbd>F</kbd> and <kbd>J</kbd>.</li>
+            <li>Press <kbd>Space</kbd> with your thumb (or the Start button).</li>
+            <li>Hold still for 3 seconds.</li>
+          </ol>
+          <p class="countdown" id="calibrate-countdown" aria-live="assertive"></p>
+          <progress id="calibrate-progress" max="1" value="0" aria-label="Calibration progress"></progress>
+          <p class="status-line" id="calibrate-status" role="status">Ready when you are.</p>
+          <div class="button-row">
+            <button type="button" class="primary" id="calibrate-start">Start</button>
+            <button type="button" class="secondary" id="calibrate-skip">Skip calibration</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Screen 3: Choose exercise ===== -->
+    <section class="screen" id="screen-choose" data-screen="choose" aria-labelledby="choose-title" hidden>
+      <h2 id="choose-title">Step 3: Choose an exercise</h2>
+      <div class="level-list" id="level-list"></div>
+      <div class="button-row">
+        <button type="button" class="secondary" id="choose-back-setup">Camera setup</button>
+        <button type="button" class="secondary" id="choose-recalibrate">Calibrate again</button>
+      </div>
+      <h3>Recent sessions</h3>
+      <div id="history-choose"></div>
+    </section>
+
+    <!-- ===== Screen 4: Exercise ===== -->
+    <section class="screen" id="screen-exercise" data-screen="exercise" aria-labelledby="exercise-title" hidden>
+      <div class="exercise-header">
+        <h2 id="exercise-title">Exercise</h2>
+        <span class="badge" id="attribution-badge" hidden>Finger check not built yet</span>
+        <span class="badge badge-replay" id="replay-badge" hidden>Replaying a recording</span>
+      </div>
+      <div class="two-column exercise-layout">
+        <div class="panel">
+          <div class="typing-area" id="typing-area" tabindex="0" role="textbox" aria-readonly="true"
+               aria-label="Typing area. Type the text shown." aria-describedby="next-finger">
+            <p class="target-text" id="target-text"></p>
+          </div>
+          <p class="next-finger" id="next-finger">Next: --</p>
+          <p class="feedback" id="feedback-text" aria-live="polite">Start typing when ready.</p>
+          <dl class="live-stats">
+            <div><dt>WPM</dt><dd id="live-wpm">0</dd></div>
+            <div><dt>Accuracy</dt><dd id="live-accuracy">100%</dd></div>
+            <div><dt>Typed</dt><dd id="live-typed">0</dd></div>
+          </dl>
+          <p class="hint">Press <kbd>Esc</kbd> to stop. <kbd>Backspace</kbd> fixes a mistake, but the mistake still counts.</p>
+          <div class="button-row">
+            <button type="button" class="secondary" id="exercise-quit">Stop and choose another</button>
+          </div>
+        </div>
+        <div class="stage-slot" id="exercise-stage-slot"></div>
+      </div>
+    </section>
+
+    <!-- ===== Screen 5: Summary ===== -->
+    <section class="screen" id="screen-summary" data-screen="summary" aria-labelledby="summary-title" hidden>
+      <h2 id="summary-title">Session summary</h2>
+      <p class="headline" id="summary-headline"></p>
+      <dl class="summary-stats">
+        <div><dt>Speed</dt><dd id="summary-wpm"></dd></div>
+        <div><dt>Character accuracy</dt><dd id="summary-char-accuracy"></dd></div>
+        <div><dt>Finger accuracy</dt><dd id="summary-finger-accuracy"></dd></div>
+      </dl>
+      <h3 id="histogram-title">Keystrokes per finger</h3>
+      <p class="hint" id="histogram-note"></p>
+      <div class="histogram" id="summary-histogram" role="img" aria-labelledby="histogram-title histogram-note"></div>
+      <h3>Most common wrong fingers</h3>
+      <div id="summary-substitutions"></div>
+      <div class="button-row">
+        <button type="button" class="primary" id="summary-again">Try again</button>
+        <button type="button" class="secondary" id="summary-choose">Choose another exercise</button>
+      </div>
+      <h3>Last 10 sessions</h3>
+      <div id="history-summary"></div>
+    </section>
+  </main>
+
+  <!-- The live camera view. Moved into whichever screen's stage slot is showing. -->
+  <div class="stage" id="stage">
+    <video id="camera-video" playsinline muted autoplay aria-label="Live camera view of your hands"></video>
+    <canvas id="overlay-canvas" aria-hidden="true"></canvas>
+    <p class="stage-empty" id="stage-empty">Camera is off.</p>
+  </div>
+
+  <!-- ===== Debug panel (hidden by default) ===== -->
+  <button type="button" class="debug-toggle" id="debug-toggle" aria-expanded="false" aria-controls="debug-panel">Debug</button>
+  <aside class="debug-panel" id="debug-panel" aria-label="Debug panel" hidden>
+    <h2>Debug</h2>
+    <dl class="debug-stats">
+      <div><dt>Detection fps</dt><dd id="debug-fps">--</dd></div>
+      <div><dt>Frame timestamp source</dt><dd id="debug-timestamp-source">--</dd></div>
+      <div><dt>Estimated frame lag</dt><dd id="debug-lag">--</dd></div>
+      <div><dt>Frame buffer size</dt><dd id="debug-buffer-size">--</dd></div>
+      <div><dt>Model runs on</dt><dd id="debug-delegate">--</dd></div>
+      <div><dt>Input source</dt><dd id="debug-source">live</dd></div>
+      <div><dt>Last attribution</dt><dd id="debug-last-attribution">--</dd></div>
+    </dl>
+
+    <h3>Recording</h3>
+    <div class="button-row">
+      <button type="button" id="debug-record">Record</button>
+      <button type="button" id="debug-stop" disabled>Stop and download JSON</button>
+    </div>
+    <p class="status-line" id="debug-record-status" role="status">Not recording.</p>
+    <label class="field-label" for="debug-load">Load recording for replay</label>
+    <input type="file" id="debug-load" accept=".json,application/json">
+    <p class="status-line" id="debug-replay-status" role="status"></p>
+
+    <h3>Motion traces</h3>
+    <p class="hint">Each fingertip's position from 300 ms before to 300 ms after a key press. The dashed line is the moment the key fired. The thick line is the finger that <em>should</em> press that key.</p>
+    <div class="trace-controls">
+      <label for="trace-select">Keystroke</label>
+      <select id="trace-select"><option value="">No keystrokes yet</option></select>
+      <label class="checkbox-label"><input type="checkbox" id="trace-relative" checked> Show change from start of window</label>
+    </div>
+    <canvas class="trace-canvas" id="trace-canvas" width="720" height="660" aria-label="Fingertip motion traces"></canvas>
+    <div class="trace-legend" id="trace-legend"></div>
+  </aside>
+
   <script type="module" src="js/main.js"></script>
 </body>
 </html>
