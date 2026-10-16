@@ -3,6 +3,7 @@
 // main.js wires modules together; the real work lives in the other files.
 
 import {
+  LIVE_STATS_INTERVAL_MS,
   LOW_FPS_GRACE_MS,
   LOW_FPS_THRESHOLD,
   SETUP_BOTH_HANDS_REQUIRED_MS,
@@ -18,11 +19,15 @@ import {
   rememberCamera,
   rememberedCamera,
 } from "./camera.js";
+import { LEVELS, getExerciseText } from "./exercises.js";
+import { describeFingers, expectedFingersForChar, needsShift } from "./fingerMap.js";
 import { FrameBuffer } from "./frameBuffer.js";
 import { HandTracker } from "./handTracker.js";
+import { startKeyboardCapture } from "./keyboard.js";
 import { Overlay } from "./overlay.js";
 import { createPipeline } from "./pipeline.js";
-import { storage } from "./storage.js";
+import { TypingSession } from "./session.js";
+import { KEYS, storage } from "./storage.js";
 
 // ---------- Element lookup ----------
 
@@ -47,6 +52,27 @@ const ui = {
   setupStatus: $("setup-status"),
   setupContinue: $("setup-continue"),
   setupSkipCamera: $("setup-skip-camera"),
+  // choose
+  levelList: $("level-list"),
+  chooseBackSetup: $("choose-back-setup"),
+  chooseRecalibrate: $("choose-recalibrate"),
+  historyChoose: $("history-choose"),
+  // exercise
+  exerciseTitle: $("exercise-title"),
+  typingArea: $("typing-area"),
+  targetText: $("target-text"),
+  nextFinger: $("next-finger"),
+  feedbackText: $("feedback-text"),
+  liveWpm: $("live-wpm"),
+  liveAccuracy: $("live-accuracy"),
+  liveTyped: $("live-typed"),
+  exerciseQuit: $("exercise-quit"),
+  // summary
+  summaryWpm: $("summary-wpm"),
+  summaryCharAccuracy: $("summary-char-accuracy"),
+  summaryFingerAccuracy: $("summary-finger-accuracy"),
+  summaryAgain: $("summary-again"),
+  summaryChoose: $("summary-choose"),
   // debug
   debugToggle: $("debug-toggle"),
   debugPanel: $("debug-panel"),
@@ -71,6 +97,10 @@ const state = {
   tracker: null,
   trackerReady: false,
   bothHandsSince: null,
+  session: null,
+  exerciseActive: false,
+  targetSpans: [],
+  lastSummary: null,
 };
 
 const frameBuffer = new FrameBuffer();
@@ -245,6 +275,181 @@ function initSetupScreen() {
   ui.setupSkipCamera.addEventListener("click", () => showScreen("choose"));
 }
 
+// ---------- Choose screen ----------
+
+function exerciseProgress() {
+  const progress = storage.getJSON(KEYS.exerciseProgress, {});
+  return progress && typeof progress === "object" ? progress : {};
+}
+
+function nextExerciseIndex(levelId) {
+  return Number(exerciseProgress()[levelId] ?? 0);
+}
+
+function advanceExerciseIndex(levelId, finishedIndex) {
+  storage.setJSON(KEYS.exerciseProgress, { ...exerciseProgress(), [levelId]: finishedIndex + 1 });
+}
+
+function renderLevelList() {
+  ui.levelList.replaceChildren(
+    ...LEVELS.map((level) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "level-card";
+      const index = nextExerciseIndex(level.id) % level.items.length;
+      const title = document.createElement("strong");
+      title.textContent = level.title;
+      const description = document.createElement("span");
+      description.textContent = `${level.description} Exercise ${index + 1} of ${level.items.length}.`;
+      button.append(title, description);
+      button.addEventListener("click", () => startExercise(level.id, index));
+      return button;
+    }),
+  );
+}
+
+function initChooseScreen() {
+  screenEnterHandlers.choose = () => {
+    renderLevelList();
+    renderHistory(ui.historyChoose);
+  };
+  ui.chooseBackSetup.addEventListener("click", () => showScreen("setup"));
+  ui.chooseRecalibrate.addEventListener("click", () => showScreen("calibrate"));
+}
+
+// ---------- Exercise screen ----------
+
+function startExercise(levelId, exerciseIndex) {
+  const text = getExerciseText(levelId, exerciseIndex);
+  state.session = new TypingSession(text, { levelId, exerciseIndex });
+  state.exerciseActive = true;
+  ui.exerciseTitle.textContent = `${LEVELS.find((l) => l.id === levelId).title}, exercise ${exerciseIndex + 1}`;
+  renderTargetText();
+  setFeedback("Start typing when ready.", "idle");
+  updateExerciseDisplay();
+  showScreen("exercise");
+  ui.typingArea.focus();
+}
+
+function renderTargetText() {
+  state.targetSpans = [...state.session.targetText].map((char) => {
+    const span = document.createElement("span");
+    span.textContent = char;
+    return span;
+  });
+  ui.targetText.replaceChildren(...state.targetSpans);
+}
+
+function updateTargetText() {
+  const { typed, position } = state.session;
+  state.targetSpans.forEach((span, index) => {
+    if (index < position) span.className = typed[index].correct ? "char-correct" : "char-wrong";
+    else span.className = index === position ? "char-current" : "char-pending";
+  });
+}
+
+function nextFingerText(char) {
+  if (char == null) return "Done!";
+  const fingers = expectedFingersForChar(char);
+  if (fingers.length === 0) return "Next: any finger";
+  let text = `Next: ${describeFingers(fingers)}`;
+  if (needsShift(char)) {
+    // Use the Shift key on the opposite hand from the letter.
+    const shiftHand = fingers[0].startsWith("L_") ? "right" : "left";
+    text += ` + ${shiftHand} pinky on Shift`;
+  }
+  return text;
+}
+
+function formatPercent(fraction) {
+  return fraction == null ? "--" : `${Math.round(fraction * 100)}%`;
+}
+
+function updateLiveStats() {
+  if (!state.session) return;
+  const stats = state.session.liveStats(performance.now());
+  ui.liveWpm.textContent = stats.wpm.toFixed(0);
+  ui.liveAccuracy.textContent = stats.accuracy == null ? "100%" : formatPercent(stats.accuracy);
+  ui.liveTyped.textContent = `${stats.typedCount} / ${state.session.targetText.length}`;
+}
+
+function updateExerciseDisplay() {
+  updateTargetText();
+  ui.nextFinger.textContent = nextFingerText(state.session.nextChar);
+  updateLiveStats();
+}
+
+function setFeedback(text, status) {
+  ui.feedbackText.textContent = text;
+  ui.feedbackText.dataset.status = status;
+}
+
+function handleExerciseKey(keyEvent) {
+  const keystroke = state.session.handleKey(keyEvent);
+  if (!keystroke) return;
+  updateExerciseDisplay();
+  if (state.session.isComplete) finishExercise();
+}
+
+function quitExercise() {
+  state.exerciseActive = false;
+  state.session = null;
+  showScreen("choose");
+}
+
+async function finishExercise() {
+  state.exerciseActive = false;
+  const session = state.session;
+  advanceExerciseIndex(session.levelId, session.exerciseIndex);
+  state.lastSummary = session.summary();
+  showScreen("summary");
+}
+
+function initExerciseScreen() {
+  ui.exerciseQuit.addEventListener("click", quitExercise);
+  ui.typingArea.addEventListener("click", () => ui.typingArea.focus());
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.screen === "exercise") quitExercise();
+  });
+  setInterval(() => state.exerciseActive && updateLiveStats(), LIVE_STATS_INTERVAL_MS);
+}
+
+// ---------- Summary screen ----------
+
+function renderSummary() {
+  const summary = state.lastSummary;
+  if (!summary) return;
+  ui.summaryWpm.textContent = `${summary.wpm.toFixed(0)} WPM`;
+  ui.summaryCharAccuracy.textContent = formatPercent(summary.charAccuracy);
+  ui.summaryFingerAccuracy.textContent =
+    summary.fingerAccuracy == null ? "not available" : formatPercent(summary.fingerAccuracy);
+}
+
+function renderHistory() {}
+
+function initSummaryScreen() {
+  screenEnterHandlers.summary = renderSummary;
+  ui.summaryAgain.addEventListener("click", () => {
+    const { levelId, exerciseIndex } = state.lastSummary;
+    startExercise(levelId, exerciseIndex);
+  });
+  ui.summaryChoose.addEventListener("click", () => showScreen("choose"));
+}
+
+// ---------- Keyboard ----------
+
+function initKeyboard() {
+  startKeyboardCapture({
+    onKey: (keyEvent) => pipeline.ingestKey(keyEvent, "live"),
+    isExerciseActive: () => state.exerciseActive,
+    typingArea: ui.typingArea,
+  });
+}
+
+pipeline.onKey((keyEvent) => {
+  if (state.screen === "exercise" && state.exerciseActive) handleExerciseKey(keyEvent);
+});
+
 // ---------- Debug panel ----------
 
 function initDebugPanel() {
@@ -276,6 +481,10 @@ pipeline.onFrame((frame) => {
 
 function start() {
   initSetupScreen();
+  initChooseScreen();
+  initExerciseScreen();
+  initSummaryScreen();
+  initKeyboard();
   initDebugPanel();
   setInterval(() => {
     checkFps();
@@ -284,7 +493,7 @@ function start() {
   }, 1000);
 
   if (skipSetup) {
-    showScreen("choose");
+    startExercise(1, 0);
     return;
   }
 

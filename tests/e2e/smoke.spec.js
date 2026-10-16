@@ -49,3 +49,23 @@ test("debug panel toggles", async ({ page }) => {
   await page.locator("#debug-toggle").click();
   await expect(panel).toBeHidden();
 });
+
+test("typing the first 10 characters of a Level 1 drill updates the display", async ({ page }) => {
+  const errors = watchConsole(page);
+  await page.goto("/index.html?skipSetup=1");
+  await expect(page.locator("#screen-exercise")).toBeVisible();
+  const target = await page.locator("#target-text").textContent();
+  expect(target.length).toBeGreaterThan(10);
+  await expect(page.locator("#live-wpm")).toHaveText("0");
+
+  await page.keyboard.type(target.slice(0, 10), { delay: 60 });
+
+  await expect(page.locator("#target-text .char-correct")).toHaveCount(10);
+  await expect(page.locator("#target-text .char-current")).toHaveCount(1);
+  await expect(page.locator("#live-typed")).toHaveText(`10 / ${target.length}`);
+  await expect(page.locator("#live-wpm")).not.toHaveText("0");
+  await expect(page.locator("#live-accuracy")).toHaveText("100%");
+  // The page must not have scrolled from the space bar.
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  expect(errors).toEqual([]);
+});
