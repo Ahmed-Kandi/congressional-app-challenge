@@ -65,6 +65,10 @@ test("typing the first 10 characters of a Level 1 drill updates the display", as
   await expect(page.locator("#live-typed")).toHaveText(`10 / ${target.length}`);
   await expect(page.locator("#live-wpm")).not.toHaveText("0");
   await expect(page.locator("#live-accuracy")).toHaveText("100%");
+  // The team's function is still the stub, so the badge shows and checks are neutral.
+  await expect(page.locator("#attribution-badge")).toBeVisible();
+  await expect(page.locator("#attribution-badge")).toHaveText("Finger check not built yet");
+  await expect(page.locator("#feedback-text")).toHaveText("Finger check unavailable.");
   // The page must not have scrolled from the space bar.
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
   expect(errors).toEqual([]);

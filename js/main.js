@@ -3,6 +3,7 @@
 // main.js wires modules together; the real work lives in the other files.
 
 import {
+  ATTRIBUTION_DELAY_MS,
   LIVE_STATS_INTERVAL_MS,
   LOW_FPS_GRACE_MS,
   LOW_FPS_THRESHOLD,
@@ -19,7 +20,10 @@ import {
   rememberCamera,
   rememberedCamera,
 } from "./camera.js";
+import { ATTRIBUTION_IMPLEMENTED, attributeKeystroke } from "./core/fingerAttribution.js";
+import { createCalibrationScreen, loadCalibration } from "./calibration.js";
 import { LEVELS, getExerciseText } from "./exercises.js";
+import { evaluateAttribution, runAttribution, showFingerCheck } from "./feedback.js";
 import { describeFingers, expectedFingersForChar, needsShift } from "./fingerMap.js";
 import { FrameBuffer } from "./frameBuffer.js";
 import { HandTracker } from "./handTracker.js";
@@ -52,6 +56,12 @@ const ui = {
   setupStatus: $("setup-status"),
   setupContinue: $("setup-continue"),
   setupSkipCamera: $("setup-skip-camera"),
+  // calibrate
+  calibrateCountdown: $("calibrate-countdown"),
+  calibrateProgress: $("calibrate-progress"),
+  calibrateStatus: $("calibrate-status"),
+  calibrateStart: $("calibrate-start"),
+  calibrateSkip: $("calibrate-skip"),
   // choose
   levelList: $("level-list"),
   chooseBackSetup: $("choose-back-setup"),
@@ -59,6 +69,7 @@ const ui = {
   historyChoose: $("history-choose"),
   // exercise
   exerciseTitle: $("exercise-title"),
+  attributionBadge: $("attribution-badge"),
   typingArea: $("typing-area"),
   targetText: $("target-text"),
   nextFinger: $("next-finger"),
@@ -82,6 +93,7 @@ const ui = {
   debugBufferSize: $("debug-buffer-size"),
   debugDelegate: $("debug-delegate"),
   debugSource: $("debug-source"),
+  debugLastAttribution: $("debug-last-attribution"),
 };
 
 // ---------- Shared state ----------
@@ -101,6 +113,9 @@ const state = {
   exerciseActive: false,
   targetSpans: [],
   lastSummary: null,
+  calibration: loadCalibration(),
+  pendingFingerChecks: 0,
+  fingerCheckWaiters: [],
 };
 
 const frameBuffer = new FrameBuffer();
@@ -275,6 +290,34 @@ function initSetupScreen() {
   ui.setupSkipCamera.addEventListener("click", () => showScreen("choose"));
 }
 
+// ---------- Calibrate screen ----------
+
+let calibrationScreen = null;
+
+function initCalibrateScreen() {
+  calibrationScreen = createCalibrationScreen({
+    elements: {
+      countdown: ui.calibrateCountdown,
+      progress: ui.calibrateProgress,
+      status: ui.calibrateStatus,
+      startButton: ui.calibrateStart,
+    },
+    pipeline,
+    onSuccess: (calibration) => {
+      state.calibration = calibration;
+      showScreen("choose");
+    },
+  });
+  screenEnterHandlers.calibrate = () => {
+    calibrationScreen.reset();
+    ui.calibrateStatus.textContent = state.calibration
+      ? "A saved calibration exists. Calibrate again, or skip to keep using it."
+      : "Ready when you are.";
+  };
+  ui.calibrateStart.addEventListener("click", () => calibrationScreen.start());
+  ui.calibrateSkip.addEventListener("click", () => showScreen("choose"));
+}
+
 // ---------- Choose screen ----------
 
 function exerciseProgress() {
@@ -324,6 +367,8 @@ function startExercise(levelId, exerciseIndex) {
   state.session = new TypingSession(text, { levelId, exerciseIndex });
   state.exerciseActive = true;
   ui.exerciseTitle.textContent = `${LEVELS.find((l) => l.id === levelId).title}, exercise ${exerciseIndex + 1}`;
+  ui.attributionBadge.hidden = ATTRIBUTION_IMPLEMENTED;
+  overlay.clearFlash();
   renderTargetText();
   setFeedback("Start typing when ready.", "idle");
   updateExerciseDisplay();
@@ -385,10 +430,45 @@ function setFeedback(text, status) {
 }
 
 function handleExerciseKey(keyEvent) {
-  const keystroke = state.session.handleKey(keyEvent);
+  const session = state.session;
+  const keystroke = session.handleKey(keyEvent);
   if (!keystroke) return;
   updateExerciseDisplay();
-  if (state.session.isComplete) finishExercise();
+  scheduleFingerCheck(session, keystroke, keyEvent);
+  if (session.isComplete) finishExercise();
+}
+
+// ---------- Finger check (calls the team's function) ----------
+
+// Camera frames lag behind key events, so wait ATTRIBUTION_DELAY_MS for the
+// frames that show the finger landing on the key, then ask the team's function.
+function scheduleFingerCheck(session, keystroke, keyEvent) {
+  state.pendingFingerChecks += 1;
+  setTimeout(() => {
+    try {
+      runFingerCheck(session, keystroke, keyEvent);
+    } finally {
+      state.pendingFingerChecks -= 1;
+      if (state.pendingFingerChecks === 0) state.fingerCheckWaiters.splice(0).forEach((resolve) => resolve());
+    }
+  }, ATTRIBUTION_DELAY_MS);
+}
+
+function runFingerCheck(session, keystroke, keyEvent) {
+  const { result, problem } = runAttribution(attributeKeystroke, keyEvent, frameBuffer, state.calibration);
+  const check = evaluateAttribution(result, keystroke.expectedFingers);
+  session.recordFingerCheck(keystroke.id, check);
+  ui.debugLastAttribution.textContent = problem ?? (result ? `${result.finger} (${result.confidence.toFixed(2)})` : "null");
+  if (problem) console.warn(problem);
+  // Only update the screen if this keystroke belongs to the exercise on screen.
+  if (session === state.session && state.screen === "exercise") {
+    showFingerCheck({ textElement: ui.feedbackText, overlay }, check, keystroke.expectedFingers);
+  }
+}
+
+function waitForFingerChecks() {
+  if (state.pendingFingerChecks === 0) return Promise.resolve();
+  return new Promise((resolve) => state.fingerCheckWaiters.push(resolve));
 }
 
 function quitExercise() {
@@ -400,6 +480,7 @@ function quitExercise() {
 async function finishExercise() {
   state.exerciseActive = false;
   const session = state.session;
+  await waitForFingerChecks(); // the last keystroke's check arrives a moment later
   advanceExerciseIndex(session.levelId, session.exerciseIndex);
   state.lastSummary = session.summary();
   showScreen("summary");
@@ -441,13 +522,16 @@ function initSummaryScreen() {
 function initKeyboard() {
   startKeyboardCapture({
     onKey: (keyEvent) => pipeline.ingestKey(keyEvent, "live"),
-    isExerciseActive: () => state.exerciseActive,
+    // Calibration also uses Space, so stop it scrolling the page there too.
+    isExerciseActive: () => state.exerciseActive || state.screen === "calibrate",
     typingArea: ui.typingArea,
   });
 }
 
 pipeline.onKey((keyEvent) => {
   if (state.screen === "exercise" && state.exerciseActive) handleExerciseKey(keyEvent);
+  // On the Calibrate screen the thumb on Space starts the capture.
+  if (state.screen === "calibrate" && keyEvent.code === "Space" && !calibrationScreen.capturing) calibrationScreen.start();
 });
 
 // ---------- Debug panel ----------
@@ -481,6 +565,7 @@ pipeline.onFrame((frame) => {
 
 function start() {
   initSetupScreen();
+  initCalibrateScreen();
   initChooseScreen();
   initExerciseScreen();
   initSummaryScreen();
