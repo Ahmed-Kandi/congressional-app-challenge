@@ -90,5 +90,8 @@ export const TRACE_WINDOW_BEFORE_MS = 300;
 export const TRACE_WINDOW_AFTER_MS = 300;
 // How many past keystrokes the traces view can switch between.
 export const TRACE_HISTORY_LIMIT = 50;
+// After a replay ends, keep its frames this long so the last keystroke's finger
+// check (ATTRIBUTION_DELAY_MS) and motion trace (TRACE_WINDOW_AFTER_MS) can run.
+export const REPLAY_END_HOLD_MS = 500;
 // Safety cap on a recording (about 5 minutes at 60 fps) so memory stays sane.
 export const RECORDING_MAX_FRAMES = 18000;

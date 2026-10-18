@@ -1,6 +1,8 @@
 // Browser smoke test. Runs in Chromium with a fake camera (a test pattern, no hands),
 // so nothing here depends on hand detection.
 import { test, expect } from "@playwright/test";
+import { buildRecording, serializeRecording } from "../../js/debug/recorder.js";
+import { generateSynthetic } from "../synthetic.js";
 
 // We fail on every console ERROR. Nothing is ignored at the moment, because in
 // Chromium 156 the fake camera and MediaPipe only log at warning/info level.
@@ -71,5 +73,40 @@ test("typing the first 10 characters of a Level 1 drill updates the display", as
   await expect(page.locator("#feedback-text")).toHaveText("Finger check unavailable.");
   // The page must not have scrolled from the space bar.
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test("replaying a recording drives the exercise and traces through the live code path", async ({ page }) => {
+  const errors = watchConsole(page);
+  // Four synthetic presses that type "fdsa" (no camera needed).
+  const { frames, keyEvents } = generateSynthetic({
+    fps: 30,
+    durationMs: 2000,
+    presses: [
+      { finger: "L_INDEX", t: 1300 },
+      { finger: "L_MIDDLE", t: 1700 },
+      { finger: "L_RING", t: 2100 },
+      { finger: "L_PINKY", t: 2500 },
+    ],
+  });
+  const recording = buildRecording({ frames, keyEvents, meta: { note: "e2e synthetic" } });
+
+  await page.goto("/index.html?skipSetup=1");
+  await page.locator("#debug-toggle").click();
+  await page.locator("#debug-load").setInputFiles({
+    name: "synthetic.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(serializeRecording(recording)),
+  });
+
+  // The replayed keys complete the rebuilt exercise text "fdsa", which opens the summary.
+  await expect(page.locator("#screen-summary")).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("#summary-char-accuracy")).toHaveText("100%");
+  await expect(page.locator("#summary-finger-accuracy")).toHaveText("not available");
+  // One motion trace per replayed key press.
+  await expect(page.locator("#trace-select option")).toHaveCount(4);
+  await expect(page.locator("#trace-select option").first()).toContainText('"a" (KeyA), expected left pinky');
+  await expect(page.locator("#debug-replay-status")).toContainText("finished", { timeout: 5_000 });
+  await expect(page.locator("#debug-source")).toHaveText("live", { timeout: 5_000 });
   expect(errors).toEqual([]);
 });

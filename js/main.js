@@ -24,6 +24,9 @@ import { ATTRIBUTION_IMPLEMENTED, attributeKeystroke } from "./core/fingerAttrib
 import { createCalibrationScreen, loadCalibration } from "./calibration.js";
 import { LEVELS, getExerciseText } from "./exercises.js";
 import { evaluateAttribution, runAttribution, showFingerCheck } from "./feedback.js";
+import { Recorder, downloadRecording } from "./debug/recorder.js";
+import { createReplayer, parseRecording } from "./debug/replay.js";
+import { createTraceStore, describeSnapshot, drawTraces, renderLegend } from "./debug/traces.js";
 import { describeFingers, expectedFingersForChar, needsShift } from "./fingerMap.js";
 import { FrameBuffer } from "./frameBuffer.js";
 import { HandTracker } from "./handTracker.js";
@@ -70,6 +73,7 @@ const ui = {
   // exercise
   exerciseTitle: $("exercise-title"),
   attributionBadge: $("attribution-badge"),
+  replayBadge: $("replay-badge"),
   typingArea: $("typing-area"),
   targetText: $("target-text"),
   nextFinger: $("next-finger"),
@@ -94,6 +98,15 @@ const ui = {
   debugDelegate: $("debug-delegate"),
   debugSource: $("debug-source"),
   debugLastAttribution: $("debug-last-attribution"),
+  debugRecord: $("debug-record"),
+  debugStop: $("debug-stop"),
+  debugRecordStatus: $("debug-record-status"),
+  debugLoad: $("debug-load"),
+  debugReplayStatus: $("debug-replay-status"),
+  traceSelect: $("trace-select"),
+  traceRelative: $("trace-relative"),
+  traceCanvas: $("trace-canvas"),
+  traceLegend: $("trace-legend"),
 };
 
 // ---------- Shared state ----------
@@ -363,10 +376,15 @@ function initChooseScreen() {
 // ---------- Exercise screen ----------
 
 function startExercise(levelId, exerciseIndex) {
-  const text = getExerciseText(levelId, exerciseIndex);
-  state.session = new TypingSession(text, { levelId, exerciseIndex });
+  const title = `${LEVELS.find((l) => l.id === levelId).title}, exercise ${exerciseIndex + 1}`;
+  startExerciseWithText(getExerciseText(levelId, exerciseIndex), { levelId, exerciseIndex }, title);
+}
+
+function startExerciseWithText(text, info, title) {
+  state.session = new TypingSession(text, info);
   state.exerciseActive = true;
-  ui.exerciseTitle.textContent = `${LEVELS.find((l) => l.id === levelId).title}, exercise ${exerciseIndex + 1}`;
+  ui.exerciseTitle.textContent = title;
+  ui.replayBadge.hidden = pipeline.source !== "replay";
   ui.attributionBadge.hidden = ATTRIBUTION_IMPLEMENTED;
   overlay.clearFlash();
   renderTargetText();
@@ -472,6 +490,7 @@ function waitForFingerChecks() {
 }
 
 function quitExercise() {
+  replayer.stop();
   state.exerciseActive = false;
   state.session = null;
   showScreen("choose");
@@ -481,7 +500,7 @@ async function finishExercise() {
   state.exerciseActive = false;
   const session = state.session;
   await waitForFingerChecks(); // the last keystroke's check arrives a moment later
-  advanceExerciseIndex(session.levelId, session.exerciseIndex);
+  if (session.levelId != null) advanceExerciseIndex(session.levelId, session.exerciseIndex);
   state.lastSummary = session.summary();
   showScreen("summary");
 }
@@ -536,13 +555,143 @@ pipeline.onKey((keyEvent) => {
 
 // ---------- Debug panel ----------
 
+const recorder = new Recorder();
+
+// Recordings capture live input only (never a replay of a replay).
+pipeline.onFrame((frame, from) => from === "live" && recorder.addFrame(frame));
+pipeline.onKey((keyEvent, from) => from === "live" && recorder.addKey(keyEvent));
+
+function recordingMeta() {
+  const session = state.session;
+  return {
+    app: "Typing Form Coach",
+    settings: state.settings,
+    calibration: state.calibration,
+    timestampSource: state.tracker?.stats.timestampSource ?? null,
+    delegate: state.tracker?.stats.delegate ?? null,
+    exercise: session && state.exerciseActive
+      ? { text: session.targetText, levelId: session.levelId, exerciseIndex: session.exerciseIndex, typedBeforeRecording: session.position }
+      : null,
+  };
+}
+
+function startRecording() {
+  recorder.start(recordingMeta());
+  ui.debugRecord.disabled = true;
+  ui.debugStop.disabled = false;
+  ui.debugRecordStatus.textContent = "Recording... type normally, then press Stop.";
+}
+
+function stopRecording() {
+  const recording = recorder.stop({ fpsAtStop: state.tracker?.stats.fps ?? null });
+  ui.debugRecord.disabled = false;
+  ui.debugStop.disabled = true;
+  ui.debugRecordStatus.textContent = `Saved ${recording.frames.length} frames and ${recording.keyEvents.length} key presses.`;
+  downloadRecording(recording);
+}
+
+/**
+ * The text to type during replay. If the recording started at the beginning
+ * of an exercise, use that exercise. Otherwise rebuild what was typed from the
+ * recorded keys, so every replayed keystroke still gets a finger check.
+ */
+function replayTargetText(recording) {
+  const exercise = recording.meta?.exercise;
+  if (exercise?.text && exercise.typedBeforeRecording === 0) return exercise.text;
+  const typed = [];
+  for (const { key, code } of recording.keyEvents) {
+    if (code === "Backspace") typed.pop();
+    else if (typeof key === "string" && key.length === 1) typed.push(key);
+  }
+  return typed.join("");
+}
+
+const replayer = createReplayer({
+  pipeline,
+  onProgress: ({ seconds, totalSeconds }) => {
+    ui.debugReplayStatus.textContent = `Replaying: ${seconds.toFixed(1)} s of ${totalSeconds.toFixed(1)} s`;
+  },
+  onEnd: () => {
+    ui.stage.classList.remove("replay");
+    overlay.setBlankMode(false);
+    ui.replayBadge.hidden = true;
+    state.calibration = state.calibrationBeforeReplay ?? state.calibration;
+    ui.debugReplayStatus.textContent += " (finished)";
+  },
+});
+
+async function loadReplay(file) {
+  let recording;
+  try {
+    recording = parseRecording(await file.text());
+  } catch (error) {
+    ui.debugReplayStatus.textContent = `Could not load ${file.name}: ${error.message}`;
+    return;
+  }
+  // Use the calibration that was active when it was recorded.
+  state.calibrationBeforeReplay = state.calibration;
+  if (recording.meta?.calibration) state.calibration = recording.meta.calibration;
+  ui.stage.classList.add("replay");
+  overlay.setBlankMode(true);
+  pipeline.setSource("replay");
+  const text = replayTargetText(recording);
+  if (text.length > 0) startExerciseWithText(text, { levelId: recording.meta?.exercise?.levelId ?? null }, `Replay of ${file.name}`);
+  replayer.play(recording);
+}
+
+let traceStore = null;
+let followLatestTrace = true;
+
+function selectedSnapshot() {
+  const id = Number(ui.traceSelect.value);
+  return traceStore.snapshots.find((snapshot) => snapshot.id === id) ?? null;
+}
+
+function redrawTraces() {
+  if (!ui.debugPanel.hidden) drawTraces(ui.traceCanvas, selectedSnapshot(), { relative: ui.traceRelative.checked });
+}
+
+function updateTraceOptions(snapshots) {
+  const previous = ui.traceSelect.value;
+  ui.traceSelect.replaceChildren(
+    ...[...snapshots].reverse().map((snapshot) => {
+      const option = document.createElement("option");
+      option.value = String(snapshot.id);
+      option.textContent = describeSnapshot(snapshot);
+      return option;
+    }),
+  );
+  // Show the newest keystroke unless the student picked an older one to study.
+  const latest = snapshots[snapshots.length - 1];
+  ui.traceSelect.value = followLatestTrace || !previous ? String(latest.id) : previous;
+  if (!ui.traceSelect.value) ui.traceSelect.value = String(latest.id);
+  redrawTraces();
+}
+
 function initDebugPanel() {
   ui.debugToggle.addEventListener("click", () => {
     const open = ui.debugPanel.hidden;
     ui.debugPanel.hidden = !open;
     ui.debugToggle.setAttribute("aria-expanded", String(open));
     ui.debugToggle.textContent = open ? "Close debug" : "Debug";
+    redrawTraces();
   });
+  ui.debugRecord.addEventListener("click", startRecording);
+  ui.debugStop.addEventListener("click", stopRecording);
+  ui.debugLoad.addEventListener("change", () => {
+    const file = ui.debugLoad.files?.[0];
+    if (file) loadReplay(file);
+    ui.debugLoad.value = ""; // allow loading the same file again
+  });
+  traceStore = createTraceStore({ pipeline, frameBuffer, onChange: updateTraceOptions });
+  ui.traceSelect.addEventListener("change", () => {
+    const newestId = traceStore.snapshots[traceStore.snapshots.length - 1]?.id;
+    followLatestTrace = Number(ui.traceSelect.value) === newestId;
+    redrawTraces();
+  });
+  ui.traceRelative.addEventListener("change", redrawTraces);
+  renderLegend(ui.traceLegend);
+  redrawTraces();
 }
 
 function updateDebugStats() {
@@ -552,6 +701,12 @@ function updateDebugStats() {
   ui.debugLag.textContent = stats ? `${stats.lagMs.toFixed(0)} ms` : "--";
   ui.debugBufferSize.textContent = `${frameBuffer.size} frames`;
   ui.debugSource.textContent = pipeline.source;
+  if (recorder.recording) {
+    ui.debugRecordStatus.textContent = `Recording... ${recorder.frames.length} frames, ${recorder.keyEvents.length} keys.`;
+  } else if (!ui.debugStop.disabled) {
+    // The recorder stopped itself at RECORDING_MAX_FRAMES.
+    stopRecording();
+  }
 }
 
 // ---------- Frame flow ----------
