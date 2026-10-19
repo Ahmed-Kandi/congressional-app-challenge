@@ -34,6 +34,7 @@ import { startKeyboardCapture } from "./keyboard.js";
 import { Overlay } from "./overlay.js";
 import { createPipeline } from "./pipeline.js";
 import { TypingSession } from "./session.js";
+import { formatPercent, historyEntry, renderHistory, renderSummary } from "./summaryView.js";
 import { KEYS, storage } from "./storage.js";
 
 // ---------- Element lookup ----------
@@ -83,6 +84,11 @@ const ui = {
   liveTyped: $("live-typed"),
   exerciseQuit: $("exercise-quit"),
   // summary
+  summaryHeadline: $("summary-headline"),
+  summaryHistogram: $("summary-histogram"),
+  histogramNote: $("histogram-note"),
+  summarySubstitutions: $("summary-substitutions"),
+  historySummary: $("history-summary"),
   summaryWpm: $("summary-wpm"),
   summaryCharAccuracy: $("summary-char-accuracy"),
   summaryFingerAccuracy: $("summary-finger-accuracy"),
@@ -127,6 +133,7 @@ const state = {
   targetSpans: [],
   lastSummary: null,
   calibration: loadCalibration(),
+  calibrationBeforeReplay: null,
   pendingFingerChecks: 0,
   fingerCheckWaiters: [],
 };
@@ -157,6 +164,9 @@ function showScreen(name) {
     document.body.append(ui.stage);
   }
   screenEnterHandlers[name]?.();
+  // Move keyboard and screen reader focus to the new screen's heading.
+  // (The exercise screen focuses its typing area instead.)
+  if (name !== "exercise") document.querySelector(`#screen-${name} h2`)?.focus();
 }
 
 const screenEnterHandlers = {};
@@ -367,7 +377,7 @@ function renderLevelList() {
 function initChooseScreen() {
   screenEnterHandlers.choose = () => {
     renderLevelList();
-    renderHistory(ui.historyChoose);
+    renderHistory(ui.historyChoose, storage.loadHistory());
   };
   ui.chooseBackSetup.addEventListener("click", () => showScreen("setup"));
   ui.chooseRecalibrate.addEventListener("click", () => showScreen("calibrate"));
@@ -422,10 +432,6 @@ function nextFingerText(char) {
     text += ` + ${shiftHand} pinky on Shift`;
   }
   return text;
-}
-
-function formatPercent(fraction) {
-  return fraction == null ? "--" : `${Math.round(fraction * 100)}%`;
 }
 
 function updateLiveStats() {
@@ -500,8 +506,12 @@ async function finishExercise() {
   state.exerciseActive = false;
   const session = state.session;
   await waitForFingerChecks(); // the last keystroke's check arrives a moment later
-  if (session.levelId != null) advanceExerciseIndex(session.levelId, session.exerciseIndex);
   state.lastSummary = session.summary();
+  // Replays are for debugging, so they do not count as practice in the history.
+  if (pipeline.source !== "replay") {
+    if (session.levelId != null) advanceExerciseIndex(session.levelId, session.exerciseIndex);
+    storage.addToHistory(historyEntry(state.lastSummary));
+  }
   showScreen("summary");
 }
 
@@ -516,22 +526,29 @@ function initExerciseScreen() {
 
 // ---------- Summary screen ----------
 
-function renderSummary() {
-  const summary = state.lastSummary;
-  if (!summary) return;
-  ui.summaryWpm.textContent = `${summary.wpm.toFixed(0)} WPM`;
-  ui.summaryCharAccuracy.textContent = formatPercent(summary.charAccuracy);
-  ui.summaryFingerAccuracy.textContent =
-    summary.fingerAccuracy == null ? "not available" : formatPercent(summary.fingerAccuracy);
+function showSummary() {
+  if (!state.lastSummary) return;
+  renderSummary(
+    {
+      headline: ui.summaryHeadline,
+      wpm: ui.summaryWpm,
+      charAccuracy: ui.summaryCharAccuracy,
+      fingerAccuracy: ui.summaryFingerAccuracy,
+      histogram: ui.summaryHistogram,
+      histogramNote: ui.histogramNote,
+      substitutions: ui.summarySubstitutions,
+    },
+    state.lastSummary,
+  );
+  renderHistory(ui.historySummary, storage.loadHistory());
 }
 
-function renderHistory() {}
-
 function initSummaryScreen() {
-  screenEnterHandlers.summary = renderSummary;
+  screenEnterHandlers.summary = showSummary;
   ui.summaryAgain.addEventListener("click", () => {
     const { levelId, exerciseIndex } = state.lastSummary;
-    startExercise(levelId, exerciseIndex);
+    if (levelId == null) showScreen("choose"); // a replay has no exercise to repeat
+    else startExercise(levelId, exerciseIndex);
   });
   ui.summaryChoose.addEventListener("click", () => showScreen("choose"));
 }

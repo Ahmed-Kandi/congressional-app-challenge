@@ -49,6 +49,9 @@
 
 * { box-sizing: border-box; }
 
+/* Classes that set `display` would otherwise override the hidden attribute. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);
@@ -182,7 +185,7 @@ kbd {
   height: auto;
 }
 .stage canvas { position: absolute; inset: 0; height: 100%; }
-.stage.replay video { visibility: hidden; }
+.stage.replay video { display: none; }
 .stage.replay canvas { position: static; }
 .stage-empty {
   position: absolute;
@@ -228,7 +231,6 @@ progress { width: 100%; height: 1rem; }
   background: var(--surface-alt);
   cursor: text;
 }
-.typing-area:focus-visible { border-color: var(--focus); }
 .target-text {
   font-family: var(--font-mono);
   font-size: 1.6rem;
@@ -302,9 +304,10 @@ table { border-collapse: collapse; width: 100%; max-width: 700px; }
 th, td { text-align: left; padding: 0.35rem 0.6rem; border-bottom: 1px solid var(--border); }
 
 /* ---- Debug panel ---- */
+/* Bottom-left so it never covers the debug panel, which opens on the right. */
 .debug-toggle {
   position: fixed;
-  right: 1rem;
+  left: 1rem;
   bottom: 1rem;
   z-index: 20;
 }
@@ -342,3 +345,6 @@ th, td { text-align: left; padding: 0.35rem 0.6rem; border-bottom: 1px solid var
     transition: none !important;
   }
 }
+
+/* Headings receive focus when a screen opens (for screen readers); no ring needed there. */
+[tabindex="-1"]:focus { outline: none; }

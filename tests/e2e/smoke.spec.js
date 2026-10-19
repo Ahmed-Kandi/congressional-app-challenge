@@ -70,6 +70,7 @@ test("typing the first 10 characters of a Level 1 drill updates the display", as
   // The team's function is still the stub, so the badge shows and checks are neutral.
   await expect(page.locator("#attribution-badge")).toBeVisible();
   await expect(page.locator("#attribution-badge")).toHaveText("Finger check not built yet");
+  await expect(page.locator("#replay-badge")).toBeHidden();
   await expect(page.locator("#feedback-text")).toHaveText("Finger check unavailable.");
   // The page must not have scrolled from the space bar.
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
@@ -108,5 +109,63 @@ test("replaying a recording drives the exercise and traces through the live code
   await expect(page.locator("#trace-select option").first()).toContainText('"a" (KeyA), expected left pinky');
   await expect(page.locator("#debug-replay-status")).toContainText("finished", { timeout: 5_000 });
   await expect(page.locator("#debug-source")).toHaveText("live", { timeout: 5_000 });
+  expect(errors).toEqual([]);
+});
+
+test("finishing a drill shows the summary, histogram, and history", async ({ page }) => {
+  const errors = watchConsole(page);
+  await page.goto("/index.html?skipSetup=1");
+  const target = await page.locator("#target-text").textContent();
+  await page.keyboard.type(target, { delay: 20 });
+
+  await expect(page.locator("#screen-summary")).toBeVisible();
+  await expect(page.locator("#summary-char-accuracy")).toHaveText("100%");
+  await expect(page.locator("#summary-finger-accuracy")).toHaveText("not available");
+  await expect(page.locator("#summary-wpm")).toHaveText(/^\d+ WPM$/);
+  await expect(page.locator("#summary-headline")).toContainText("Finger check was not available");
+  // 9 bars without a finger check: 8 fingers + one "either thumb" bar.
+  await expect(page.locator("#summary-histogram .histogram-bar")).toHaveCount(9);
+  await expect(page.locator("#summary-histogram")).toHaveAttribute("aria-label", /left index \d+/);
+  await expect(page.locator("#history-summary tr")).toHaveCount(2); // header + this session
+
+  await page.locator("#summary-again").click();
+  await expect(page.locator("#screen-exercise")).toBeVisible();
+  await expect(page.locator("#target-text")).toHaveText(target);
+  expect(errors).toEqual([]);
+});
+
+// UI test double: replaces the team's module IN THIS TEST ONLY with one that
+// always gives the same fixed answer ("left index") and never looks at frames.
+// It is not an attribution method; it only proves the right/wrong display,
+// overlay path and finger statistics work once the team's function returns results.
+const FIXED_ANSWER_MODULE = `
+export const ATTRIBUTION_IMPLEMENTED = true;
+export function attributeKeystroke() { return { finger: "L_INDEX", confidence: 0.9 }; }
+`;
+
+test("when the finger check returns results, feedback and finger stats appear", async ({ page }) => {
+  const errors = watchConsole(page);
+  await page.route("**/js/core/fingerAttribution.js", (route) =>
+    route.fulfill({ contentType: "text/javascript", body: FIXED_ANSWER_MODULE }),
+  );
+  await page.goto("/index.html?skipSetup=1");
+  await expect(page.locator("#attribution-badge")).toBeHidden();
+
+  // Level 1, exercise 1 starts "fff jjj". F expects left index; J expects right index.
+  await page.keyboard.type("f", { delay: 0 });
+  await expect(page.locator("#feedback-text")).toHaveText("Correct finger: left index.");
+  await expect(page.locator("#feedback-text")).toHaveAttribute("data-status", "correct");
+  await page.keyboard.type("ff j", { delay: 30 });
+  await expect(page.locator("#feedback-text")).toHaveText("Wrong finger: used left index, should be right index.");
+  await expect(page.locator("#feedback-text")).toHaveAttribute("data-status", "wrong");
+
+  const target = await page.locator("#target-text").textContent();
+  await page.keyboard.type(target.slice(5), { delay: 15 });
+  await expect(page.locator("#screen-summary")).toBeVisible();
+  await expect(page.locator("#summary-headline")).toHaveText("You used 1 finger for 90 percent of your keystrokes.");
+  await expect(page.locator("#summary-finger-accuracy")).not.toHaveText("not available");
+  await expect(page.locator("#summary-histogram .histogram-bar")).toHaveCount(10);
+  await expect(page.locator("#summary-substitutions tr")).not.toHaveCount(0);
+  await expect(page.locator("#summary-substitutions")).toContainText("right index");
   expect(errors).toEqual([]);
 });
