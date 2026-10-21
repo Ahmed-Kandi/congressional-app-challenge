@@ -169,3 +169,33 @@ test("when the finger check returns results, feedback and finger stats appear", 
   await expect(page.locator("#summary-substitutions")).toContainText("right index");
   expect(errors).toEqual([]);
 });
+
+// The only hosts the app may contact: itself, the MediaPipe library CDN, and the model file.
+const ALLOWED_HOSTS = new Set(["localhost", "cdn.jsdelivr.net", "storage.googleapis.com"]);
+
+test("works under a GitHub Pages style subpath and only talks to allowed hosts", async ({ page }) => {
+  const errors = watchConsole(page);
+  const failed = [];
+  const hosts = new Set();
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.protocol.startsWith("http")) hosts.add(url.hostname);
+  });
+  page.on("response", (response) => {
+    if (response.status() >= 400) failed.push(`${response.status()} ${response.url()}`);
+  });
+
+  // Setup screen under /typing-form-coach/ (camera + MediaPipe load).
+  await page.goto("/typing-form-coach/");
+  await expect(page.locator("#screen-setup")).toBeVisible();
+  await expect(page.locator("#setup-status")).toHaveText(/Tracking hands|unavailable/, { timeout: 30_000 });
+
+  // Exercise under the subpath too.
+  await page.goto("/typing-form-coach/index.html?skipSetup=1");
+  await page.keyboard.type("fff", { delay: 30 });
+  await expect(page.locator("#target-text .char-correct")).toHaveCount(3);
+
+  expect(failed).toEqual([]);
+  expect([...hosts].filter((host) => !ALLOWED_HOSTS.has(host))).toEqual([]);
+  expect(errors).toEqual([]);
+});
