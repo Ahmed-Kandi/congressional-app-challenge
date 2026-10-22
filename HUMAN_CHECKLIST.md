@@ -20,6 +20,7 @@ This decides whether the core idea works with your camera angle, before any attr
 
 - [ ] On first load Chrome asks for camera permission. Expected: after Allow, the Camera list fills with real camera names.
 - [ ] The iPhone appears in the Camera list (named like "...'s iPhone Camera") via Continuity Camera. Picking it switches the video to the iPhone.
+- [ ] With the page already open, wake the iPhone near the Mac. Expected: it appears in the list within a few seconds without reloading (or after pressing Refresh list).
 - [ ] Reload the page. Expected: the iPhone is still selected (remembered).
 - [ ] Unplug or move away the iPhone and reload. Expected: the app falls back to the Mac's built-in camera instead of showing an error.
 - [ ] With the iPhone above the keyboard, both hand indicators turn to a check ("Left hand visible", "Right hand visible") within 2 seconds of putting both hands on the keyboard.

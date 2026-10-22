@@ -85,6 +85,15 @@ export async function listCameras() {
     }));
 }
 
+/**
+ * Call `onChange` whenever a camera is plugged in or removed. An iPhone using
+ * Continuity Camera often connects AFTER the page has loaded, so the picker
+ * must refresh itself instead of listing cameras only once.
+ */
+export function watchCameraChanges(onChange) {
+  navigator.mediaDevices?.addEventListener?.("devicechange", onChange);
+}
+
 /** The deviceId of the camera a stream is using. */
 export function deviceIdOf(stream) {
   return stream?.getVideoTracks()[0]?.getSettings().deviceId ?? null;

@@ -199,3 +199,27 @@ test("works under a GitHub Pages style subpath and only talks to allowed hosts",
   expect([...hosts].filter((host) => !ALLOWED_HOSTS.has(host))).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+test("camera list refreshes on demand and when devices change", async ({ page }) => {
+  const errors = watchConsole(page);
+  await page.goto("/index.html");
+  await expect(page.locator("#camera-picker")).toBeEnabled();
+  const before = await page.locator("#camera-picker option").count();
+
+  await page.locator("#camera-refresh").click();
+  await expect(page.locator("#camera-picker option")).toHaveCount(before);
+
+  // Simulate a camera being plugged in: the picker must re-read the list.
+  await page.evaluate(() => {
+    window.__enumerateCalls = 0;
+    const original = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
+    navigator.mediaDevices.enumerateDevices = () => {
+      window.__enumerateCalls += 1;
+      return original();
+    };
+    navigator.mediaDevices.dispatchEvent(new Event("devicechange"));
+  });
+  await expect.poll(() => page.evaluate(() => window.__enumerateCalls)).toBeGreaterThan(0);
+  await expect(page.locator("#camera-picker")).toBeEnabled();
+  expect(errors).toEqual([]);
+});

@@ -19,6 +19,7 @@ import {
   openCamera,
   rememberCamera,
   rememberedCamera,
+  watchCameraChanges,
 } from "./camera.js";
 import { ATTRIBUTION_IMPLEMENTED, attributeKeystroke } from "./core/fingerAttribution.js";
 import { createCalibrationScreen, loadCalibration } from "./calibration.js";
@@ -51,6 +52,7 @@ const ui = {
   setupError: $("setup-error"),
   setupNotice: $("setup-notice"),
   cameraPicker: $("camera-picker"),
+  cameraRefresh: $("camera-refresh"),
   mirroredToggle: $("mirrored-toggle"),
   facingRadios: document.querySelectorAll('input[name="camera-facing"]'),
   indicatorLeft: $("indicator-left"),
@@ -216,6 +218,12 @@ async function startCamera(deviceId) {
   ui.setupStatus.textContent = state.trackerReady ? "Tracking hands." : "Camera on. Loading hand tracking...";
 }
 
+/** Re-read the camera list, keeping the camera that is running selected. */
+async function refreshCameraPicker() {
+  const cameras = await listCameras().catch(() => []);
+  fillCameraPicker(ui.cameraPicker, cameras, deviceIdOf(state.stream));
+}
+
 // ---------- Hand tracking ----------
 
 async function startTracking() {
@@ -309,6 +317,8 @@ function initSetupScreen() {
     radio.addEventListener("change", () => radio.checked && updateSetting("cameraFacing", radio.value));
   }
   ui.cameraPicker.addEventListener("change", () => startCamera(ui.cameraPicker.value));
+  ui.cameraRefresh.addEventListener("click", refreshCameraPicker);
+  watchCameraChanges(refreshCameraPicker);
   ui.setupContinue.addEventListener("click", () => showScreen("calibrate"));
   ui.setupSkipCamera.addEventListener("click", () => showScreen("choose"));
 }

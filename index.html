@@ -35,9 +35,13 @@
           <div id="setup-notice" class="message message-info" role="status" hidden></div>
 
           <label class="field-label" for="camera-picker">Camera</label>
-          <select id="camera-picker" disabled>
-            <option value="">Looking for cameras...</option>
-          </select>
+          <div class="picker-row">
+            <select id="camera-picker" disabled>
+              <option value="">Looking for cameras...</option>
+            </select>
+            <button type="button" class="secondary" id="camera-refresh">Refresh list</button>
+          </div>
+          <p class="hint">Don't see your iPhone? Unlock it, put it near the Mac with Wi-Fi and Bluetooth on, then press Refresh list.</p>
 
           <fieldset class="field-group">
             <legend>Where is the camera?</legend>
