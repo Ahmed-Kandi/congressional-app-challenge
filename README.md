@@ -48,6 +48,8 @@ Other commands:
 | `npm run test:core` | Tests for the team's finger attribution function. These fail until it is written. |
 | `npm run e2e` | Browser smoke test in Chromium with a fake camera. Run `npx playwright install chromium` once first. |
 | `npm run check` | Syntax check of every .js file, then `npm test`, then `npm run e2e`. |
+| `npm run evaluate -- recordings/` | Score the finger check on labeled recordings (format in `scripts/lib/labels.mjs`). `--list <file>` numbers the keys for labeling. |
+| `npm run fixture -- <recording> <name>` | Turn a labeled recording into a regression test in `tests/fixtures/recordings/`. |
 
 ## Use an iPhone as the camera (Continuity Camera)
 

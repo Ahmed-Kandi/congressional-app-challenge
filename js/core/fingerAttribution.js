@@ -1,5 +1,4 @@
 // RESERVED FOR THE TEAM.
-// See TEAM_NOTES.md section "Your part: finger attribution".
 
 export const ATTRIBUTION_IMPLEMENTED = false;
 

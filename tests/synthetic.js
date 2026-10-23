@@ -47,6 +47,27 @@ export const HOME_KEY_FOR_FINGER = {
   R_PINKY: { code: "Semicolon", key: ";" },
 };
 
+// The synthetic keyboard, seen straight from above: the resting fingertips
+// above sit exactly one key apart (0.06) on the home row, A at x = 0.2.
+// Rows further from the student have smaller y.
+export const SYNTHETIC_KEY_PITCH = 0.06;
+const SYNTHETIC_HOME_ROW_Y = 0.535;
+const SYNTHETIC_A_COL = 2.25; // KEY_LAYOUT column of KeyA
+
+/** Image position of a point given in keyboard units (col, row from KEY_LAYOUT). */
+export function syntheticKeyboardPoint(col, row) {
+  return {
+    x: REST_TIPS.L_PINKY.x + (col - SYNTHETIC_A_COL) * SYNTHETIC_KEY_PITCH,
+    y: SYNTHETIC_HOME_ROW_Y + (row - 2) * SYNTHETIC_KEY_PITCH,
+  };
+}
+
+/** Where an index fingertip would be when pressing Q, P, Z and / on that keyboard. */
+export function syntheticCornerTouches() {
+  const corners = { KeyQ: [2, 1], KeyP: [11, 1], KeyZ: [2.75, 3], Slash: [11.75, 3] };
+  return Object.fromEntries(Object.entries(corners).map(([code, [col, row]]) => [code, syntheticKeyboardPoint(col, row)]));
+}
+
 export const DEFAULTS = {
   fps: 30,
   startTime: 1000, // ms, first frame time

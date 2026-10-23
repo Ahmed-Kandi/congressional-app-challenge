@@ -1,0 +1,8 @@
+{
+  "verified": false,
+  "notes": "ASSUMED: every key typed with the expected finger. Not checked by a person yet.",
+  "source": "typing-recording-2026-10-22T01-01-43-256Z.json",
+  "default": "expected",
+  "fingers": [],
+  "skip": ""
+}

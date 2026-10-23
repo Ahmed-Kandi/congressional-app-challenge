@@ -65,6 +65,26 @@ export const CALIBRATION_DURATION_MS = 3000;
 // Share of calibration frames that must contain both hands, or we ask to retry.
 export const CALIBRATION_MIN_BOTH_HANDS_RATIO = 0.8;
 
+// ---- Keyboard grid (Q, P, Z, / pressed with an index finger) ----
+
+// Average the fingertip over frames this long before and after the key event.
+// The finger is on the key around the key time; a short window smooths out
+// tracking jitter without including the finger arriving or leaving.
+export const KEYBOARD_GRID_SAMPLE_BEFORE_MS = 30;
+export const KEYBOARD_GRID_SAMPLE_AFTER_MS = 60;
+// Wait this long after the key before sampling, so frames up to
+// KEYBOARD_GRID_SAMPLE_AFTER_MS have arrived even with ~150 ms of camera lag.
+export const KEYBOARD_GRID_WAIT_MS = 250;
+// Need at least this many frames with the right hand in that window.
+export const KEYBOARD_GRID_MIN_SAMPLES = 1;
+// Reject corners that enclose less image area than this (normalized units, 1 =
+// the whole image). A keyboard seen from about 1 m covers well over 0.005.
+export const KEYBOARD_GRID_MIN_AREA = 0.001;
+// Reject a grid whose home row keys are, on average, more than this many key
+// widths from where the home row calibration saw the fingertips. Larger means
+// a corner was pressed with the wrong finger or the camera moved.
+export const KEYBOARD_GRID_MAX_HOME_ROW_ERROR_KEYS = 1.0;
+
 // ---- Feedback ----
 
 // How long a fingertip flashes green or red after a keystroke.

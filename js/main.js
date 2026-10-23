@@ -22,7 +22,7 @@ import {
   watchCameraChanges,
 } from "./camera.js";
 import { ATTRIBUTION_IMPLEMENTED, attributeKeystroke } from "./core/fingerAttribution.js";
-import { createCalibrationScreen, loadCalibration } from "./calibration.js";
+import { createCalibrationScreen, createKeyboardGridCapture, loadCalibration, saveCalibration } from "./calibration.js";
 import { LEVELS, getExerciseText } from "./exercises.js";
 import { evaluateAttribution, runAttribution, showFingerCheck } from "./feedback.js";
 import { Recorder, downloadRecording } from "./debug/recorder.js";
@@ -68,6 +68,18 @@ const ui = {
   calibrateStatus: $("calibrate-status"),
   calibrateStart: $("calibrate-start"),
   calibrateSkip: $("calibrate-skip"),
+  calibrateHomeStep: $("calibrate-home-step"),
+  calibrateGridStep: $("calibrate-grid-step"),
+  gridTitle: $("grid-title"),
+  gridPrompt: $("grid-prompt"),
+  gridSteps: [...document.querySelectorAll("#grid-steps li")],
+  gridStatus: $("grid-status"),
+  gridCaptureButtons: $("grid-capture-buttons"),
+  gridReviewButtons: $("grid-review-buttons"),
+  gridRestart: $("grid-restart"),
+  gridSkip: $("grid-skip"),
+  gridContinue: $("grid-continue"),
+  gridRedo: $("grid-redo"),
   // choose
   levelList: $("level-list"),
   chooseBackSetup: $("choose-back-setup"),
@@ -106,6 +118,8 @@ const ui = {
   debugDelegate: $("debug-delegate"),
   debugSource: $("debug-source"),
   debugLastAttribution: $("debug-last-attribution"),
+  debugShowGrid: $("debug-show-grid"),
+  debugGridStatus: $("debug-grid-status"),
   debugRecord: $("debug-record"),
   debugStop: $("debug-stop"),
   debugRecordStatus: $("debug-record-status"),
@@ -166,6 +180,7 @@ function showScreen(name) {
     document.body.append(ui.stage);
   }
   screenEnterHandlers[name]?.();
+  updateOverlayGrid();
   // Move keyboard and screen reader focus to the new screen's heading.
   // (The exercise screen focuses its typing area instead.)
   if (name !== "exercise") document.querySelector(`#screen-${name} h2`)?.focus();
@@ -326,6 +341,29 @@ function initSetupScreen() {
 // ---------- Calibrate screen ----------
 
 let calibrationScreen = null;
+let gridCapture = null;
+let reviewingGrid = false;
+
+function showCalibrationStep(step) {
+  ui.calibrateHomeStep.hidden = step !== "home";
+  ui.calibrateGridStep.hidden = step !== "grid";
+}
+
+function describeSavedCalibration() {
+  if (!state.calibration) return "Ready when you are.";
+  const grid = state.calibration.keyboardGrid ? "with a keyboard map" : "without a keyboard map";
+  return `A saved calibration exists (${grid}). Calibrate again, or skip to keep using it.`;
+}
+
+function startGridStep() {
+  reviewingGrid = false;
+  ui.gridCaptureButtons.hidden = false;
+  ui.gridReviewButtons.hidden = true;
+  showCalibrationStep("grid");
+  ui.gridTitle.focus();
+  gridCapture.start();
+  updateOverlayGrid();
+}
 
 function initCalibrateScreen() {
   calibrationScreen = createCalibrationScreen({
@@ -336,19 +374,56 @@ function initCalibrateScreen() {
       startButton: ui.calibrateStart,
     },
     pipeline,
+    // The home row is saved already; the keyboard map comes next. A new home
+    // row calibration drops any old map, because the camera may have moved.
     onSuccess: (calibration) => {
       state.calibration = calibration;
-      showScreen("choose");
+      startGridStep();
+    },
+  });
+  gridCapture = createKeyboardGridCapture({
+    elements: { prompt: ui.gridPrompt, steps: ui.gridSteps, status: ui.gridStatus },
+    frameBuffer,
+    getHomeRow: () => state.calibration,
+    onGrid: (grid) => {
+      state.calibration = { ...state.calibration, keyboardGrid: grid };
+      saveCalibration(state.calibration);
+      reviewingGrid = true;
+      ui.gridCaptureButtons.hidden = true;
+      ui.gridReviewButtons.hidden = false;
+      ui.gridStatus.textContent =
+        `Keyboard map saved (home row fit: ${grid.homeRowErrorKeys?.toFixed(2) ?? "?"} keys). ` +
+        "Check that the orange dots sit on the keys in the video.";
+      updateOverlayGrid();
+      ui.gridContinue.focus();
     },
   });
   screenEnterHandlers.calibrate = () => {
     calibrationScreen.reset();
-    ui.calibrateStatus.textContent = state.calibration
-      ? "A saved calibration exists. Calibrate again, or skip to keep using it."
-      : "Ready when you are.";
+    gridCapture.stop();
+    reviewingGrid = false;
+    showCalibrationStep("home");
+    ui.calibrateStatus.textContent = describeSavedCalibration();
   };
   ui.calibrateStart.addEventListener("click", () => calibrationScreen.start());
   ui.calibrateSkip.addEventListener("click", () => showScreen("choose"));
+  ui.gridRestart.addEventListener("click", startGridStep);
+  ui.gridRedo.addEventListener("click", startGridStep);
+  ui.gridSkip.addEventListener("click", () => showScreen("choose"));
+  ui.gridContinue.addEventListener("click", () => showScreen("choose"));
+}
+
+/**
+ * Draw the keyboard map on the video while it is being checked on the
+ * Calibrate screen, or anywhere when the debug checkbox asks for it.
+ */
+function updateOverlayGrid() {
+  const grid = state.calibration?.keyboardGrid ?? null;
+  const reviewing = state.screen === "calibrate" && reviewingGrid;
+  overlay.setKeyboardGrid(reviewing || ui.debugShowGrid.checked ? grid : null);
+  ui.debugGridStatus.textContent = grid
+    ? `Keyboard map from ${grid.createdAt}, home row fit ${grid.homeRowErrorKeys?.toFixed(2) ?? "?"} keys.`
+    : "No keyboard map in the current calibration.";
 }
 
 // ---------- Choose screen ----------
@@ -577,7 +652,11 @@ function initKeyboard() {
 pipeline.onKey((keyEvent) => {
   if (state.screen === "exercise" && state.exerciseActive) handleExerciseKey(keyEvent);
   // On the Calibrate screen the thumb on Space starts the capture.
-  if (state.screen === "calibrate" && keyEvent.code === "Space" && !calibrationScreen.capturing) calibrationScreen.start();
+  if (state.screen === "calibrate" && !ui.calibrateHomeStep.hidden && keyEvent.code === "Space" && !calibrationScreen.capturing) {
+    calibrationScreen.start();
+  }
+  // Then the keyboard map step listens for Q, P, Z and /.
+  if (state.screen === "calibrate" && gridCapture.running) gridCapture.handleKey(keyEvent);
 });
 
 // ---------- Debug panel ----------
@@ -596,6 +675,9 @@ function recordingMeta() {
     calibration: state.calibration,
     timestampSource: state.tracker?.stats.timestampSource ?? null,
     delegate: state.tracker?.stats.delegate ?? null,
+    // How late frames reached the app when recording started, so the
+    // evaluation script can hold back frames that would not have arrived yet.
+    frameLagMs: state.tracker?.stats.lagMs ?? null,
     exercise: session && state.exerciseActive
       ? { text: session.targetText, levelId: session.levelId, exerciseIndex: session.exerciseIndex, typedBeforeRecording: session.position }
       : null,
@@ -643,6 +725,7 @@ const replayer = createReplayer({
     overlay.setBlankMode(false);
     ui.replayBadge.hidden = true;
     state.calibration = state.calibrationBeforeReplay ?? state.calibration;
+    updateOverlayGrid();
     ui.debugReplayStatus.textContent += " (finished)";
   },
 });
@@ -658,6 +741,7 @@ async function loadReplay(file) {
   // Use the calibration that was active when it was recorded.
   state.calibrationBeforeReplay = state.calibration;
   if (recording.meta?.calibration) state.calibration = recording.meta.calibration;
+  updateOverlayGrid();
   ui.stage.classList.add("replay");
   overlay.setBlankMode(true);
   pipeline.setSource("replay");
@@ -717,6 +801,8 @@ function initDebugPanel() {
     redrawTraces();
   });
   ui.traceRelative.addEventListener("change", redrawTraces);
+  ui.debugShowGrid.addEventListener("change", updateOverlayGrid);
+  updateOverlayGrid();
   renderLegend(ui.traceLegend);
   redrawTraces();
 }

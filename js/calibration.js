@@ -8,8 +8,13 @@ import {
   CALIBRATION_DURATION_MS,
   CALIBRATION_MIN_BOTH_HANDS_RATIO,
   CALIBRATION_SETTLE_MS,
+  KEYBOARD_GRID_MIN_SAMPLES,
+  KEYBOARD_GRID_SAMPLE_AFTER_MS,
+  KEYBOARD_GRID_SAMPLE_BEFORE_MS,
+  KEYBOARD_GRID_WAIT_MS,
 } from "./config.js";
-import { FINGERS } from "./fingerMap.js";
+import { FINGERS, fingerLabel } from "./fingerMap.js";
+import { GRID_CORNERS, computeKeyboardGrid } from "./keyboardGrid.js";
 import { INDEX_TIP, PINKY_TIP, WRIST, fingertipLocation } from "./landmarks.js";
 import { KEYS, storage } from "./storage.js";
 
@@ -139,4 +144,105 @@ export function createCalibrationScreen({ elements, pipeline, onSuccess }) {
   }
 
   return { start, reset, get capturing() { return capture !== null; } };
+}
+
+// ---------- Keyboard grid step ----------
+
+/**
+ * Average position of one finger's tip over some frames (frames without that
+ * hand are skipped). The caller says which finger; this never guesses it.
+ * @returns {{point: {x, y, z}, samples: number} | null}
+ */
+export function averageFingertip(frames, finger) {
+  const { side, index } = fingertipLocation(finger);
+  const tips = frames.map((frame) => frame.hands.find((h) => h.side === side)?.landmarks[index]).filter(Boolean);
+  return tips.length === 0 ? null : { point: averagePoint(tips), samples: tips.length };
+}
+
+/**
+ * Run the keyboard grid step: the student presses Q, P, Z and / with the index
+ * finger we name, and we record where that fingertip was in the image.
+ * @param {object} options
+ * @param {object} options.elements  { prompt, steps: HTMLLIElement[] (one per corner), status }
+ * @param {import('./frameBuffer.js').FrameBuffer} options.frameBuffer
+ * @param {() => object|null} options.getHomeRow  the home row calibration, to check the fit
+ * @param {(grid: object) => void} options.onGrid
+ */
+export function createKeyboardGridCapture({ elements, frameBuffer, getHomeRow, onGrid }) {
+  let cornerIndex = -1; // -1 = not running
+  let waiting = false;
+  let touches = {};
+
+  function render() {
+    GRID_CORNERS.forEach((corner, i) => {
+      const done = Boolean(touches[corner.code]);
+      const item = elements.steps[i];
+      item.classList.toggle("done", done);
+      item.classList.toggle("current", i === cornerIndex);
+      item.querySelector(".step-mark").textContent = done ? "✓" : i === cornerIndex ? "→" : "";
+    });
+    const corner = GRID_CORNERS[cornerIndex];
+    elements.prompt.replaceChildren();
+    if (!corner) return;
+    const key = document.createElement("kbd");
+    key.textContent = corner.label;
+    elements.prompt.append("Press ", key, ` with your ${fingerLabel(corner.finger)} finger.`);
+  }
+
+  function start() {
+    cornerIndex = 0;
+    waiting = false;
+    touches = {};
+    elements.status.textContent = "Keep the camera still. Press each key once, firmly.";
+    render();
+  }
+
+  function stop() {
+    cornerIndex = -1;
+    waiting = false;
+    render();
+  }
+
+  function sample(keyEvent, corner) {
+    waiting = false;
+    if (cornerIndex < 0) return; // stopped while waiting
+    const frames = frameBuffer.between(keyEvent.t - KEYBOARD_GRID_SAMPLE_BEFORE_MS, keyEvent.t + KEYBOARD_GRID_SAMPLE_AFTER_MS);
+    const tip = averageFingertip(frames, corner.finger);
+    const side = corner.finger.startsWith("L") ? "left" : "right";
+    if (!tip || tip.samples < KEYBOARD_GRID_MIN_SAMPLES) {
+      elements.status.textContent = `The camera could not see your ${side} hand when you pressed ${corner.label}. Press ${corner.label} again.`;
+      return;
+    }
+    touches[corner.code] = tip.point;
+    cornerIndex += 1;
+    if (cornerIndex < GRID_CORNERS.length) {
+      elements.status.textContent = `Got ${corner.label}.`;
+      render();
+      return;
+    }
+    const outcome = computeKeyboardGrid(touches, getHomeRow());
+    if (!outcome.ok) {
+      start();
+      elements.status.textContent = `${outcome.reason} Starting again from Q.`;
+      return;
+    }
+    cornerIndex = -1;
+    render();
+    onGrid(outcome.grid);
+  }
+
+  /** Feed every key press here while the step is on screen. */
+  function handleKey(keyEvent) {
+    const corner = GRID_CORNERS[cornerIndex];
+    if (!corner || waiting) return;
+    if (keyEvent.code !== corner.code) {
+      elements.status.textContent = `That was ${keyEvent.key === " " ? "Space" : keyEvent.key}. Press ${corner.label}.`;
+      return;
+    }
+    // The camera frames showing the finger on the key arrive a little after the key event.
+    waiting = true;
+    setTimeout(() => sample(keyEvent, corner), KEYBOARD_GRID_WAIT_MS);
+  }
+
+  return { start, stop, handleKey, get running() { return cornerIndex >= 0; } };
 }

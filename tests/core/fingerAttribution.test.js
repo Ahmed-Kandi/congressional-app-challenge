@@ -15,7 +15,8 @@ import { computeCalibration } from "../../js/calibration.js";
 import { ATTRIBUTION_DELAY_MS, MIN_ATTRIBUTION_CONFIDENCE } from "../../js/config.js";
 import { FINGERS, fingerLabel } from "../../js/fingerMap.js";
 import { FrameBuffer } from "../../js/frameBuffer.js";
-import { generateSynthetic } from "../synthetic.js";
+import { computeKeyboardGrid } from "../../js/keyboardGrid.js";
+import { generateSynthetic, syntheticCornerTouches } from "../synthetic.js";
 
 const NON_THUMB_FINGERS = FINGERS.filter((finger) => !finger.endsWith("THUMB"));
 const KEY_TIME = 1600;
@@ -61,6 +62,18 @@ for (const fps of [30, 60]) {
       assertPicks(finger, result, `Clean ${finger} press at ${fps} fps`);
     });
   }
+}
+
+// The same clean presses when the calibration also has a keyboard map (Q, P, Z, /).
+const CALIBRATION_WITH_GRID = {
+  ...CALIBRATION,
+  keyboardGrid: computeKeyboardGrid(syntheticCornerTouches(), CALIBRATION, "test").grid,
+};
+for (const finger of NON_THUMB_FINGERS) {
+  test(`clean press with a keyboard map, 30 fps: ${finger}`, () => {
+    const result = attributeScenario({ fps: 30, seed: 5, calibration: CALIBRATION_WITH_GRID, presses: [{ finger, t: KEY_TIME }] });
+    assertPicks(finger, result, `Clean ${finger} press with a keyboard map in the calibration`);
+  });
 }
 
 for (const finger of NON_THUMB_FINGERS) {

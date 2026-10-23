@@ -3,6 +3,7 @@
 // Colors are never the only signal: flashes also draw a check or a cross.
 
 import { FLASH_DURATION_MS } from "./config.js";
+import { KEY_LAYOUT, keyCenterInImage, keyLabel } from "./keyboardGrid.js";
 import {
   FINGERTIP_BY_FINGER_NAME,
   HAND_CONNECTIONS,
@@ -20,6 +21,8 @@ const STYLE = {
   correct: "#2e9d4f",
   wrong: "#d93025",
   blankBackground: "#202124",
+  gridDot: "#ff8a65",
+  gridLabel: "#ffffff",
 };
 
 // Size used when there is no video (replaying a recording).
@@ -42,6 +45,13 @@ export class Overlay {
     this.lastFrame = null;
     this.activeFlash = null; // { fingerId, correct, until }
     this.blankMode = false;
+    this.keyboardGrid = null; // drawn when set, so the student can check it lines up
+  }
+
+  /** Show key centers from a keyboard grid (see keyboardGrid.js), or null to hide them. */
+  setKeyboardGrid(grid) {
+    this.keyboardGrid = grid;
+    this.redraw();
   }
 
   /** Replay draws on a plain background because there is no live video. */
@@ -71,6 +81,7 @@ export class Overlay {
       ctx.fillStyle = STYLE.blankBackground;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
+    if (this.keyboardGrid) this.drawKeyboardGrid();
     for (const hand of this.lastFrame?.hands ?? []) this.drawHand(hand);
     this.drawFlash();
   }
@@ -98,6 +109,23 @@ export class Overlay {
     this.dot(points[WRIST], 5, STYLE.joint);
     // The L/R label lets the student check the orientation settings at a glance.
     this.label(points[WRIST], hand.side);
+  }
+
+  drawKeyboardGrid() {
+    const ctx = this.context;
+    ctx.font = "bold 13px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    for (const [code, key] of Object.entries(KEY_LAYOUT)) {
+      // Wide keys (Shift, Enter, Space...) have no single spot a finger lands on.
+      if (key.width > 1) continue;
+      const center = this.toPixels(keyCenterInImage(this.keyboardGrid, code));
+      this.dot(center, 3, STYLE.gridDot);
+      ctx.fillStyle = STYLE.labelBackground;
+      ctx.fillRect(center.x - 7, center.y - 19, 14, 15);
+      ctx.fillStyle = STYLE.gridLabel;
+      ctx.fillText(keyLabel(code), center.x, center.y - 4);
+    }
   }
 
   dot({ x, y }, radius, color) {

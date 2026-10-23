@@ -1,0 +1,4 @@
+{
+  "about": "Goals for npm run test:core on each real recording fixture. Raise them as attributeKeystroke improves; never lower them to make a test pass without writing down why in DECISIONS.md. coverage = share of keys answered with confidence >= MIN_ATTRIBUTION_CONFIDENCE. fingerAccuracy = share of answered keys where the finger is right. falseAlarmRate = share of good-form keys the student was told were wrong.",
+  "default": { "minCoverage": 0.6, "minFingerAccuracy": 0.85, "maxFalseAlarmRate": 0.1 }
+}

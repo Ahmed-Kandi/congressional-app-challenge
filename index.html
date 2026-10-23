@@ -81,7 +81,7 @@
       <h2 id="calibrate-title" tabindex="-1"><span class="step-tag">step 2</span> Calibrate your home row</h2>
       <div class="two-column">
         <div class="stage-slot" id="calibrate-stage-slot"></div>
-        <div class="panel">
+        <div class="panel" id="calibrate-home-step">
           <ol class="instructions">
             <li>Rest your left fingers on <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> <kbd>F</kbd> and your right fingers on <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd> <kbd>;</kbd>. Feel for the bumps on <kbd>F</kbd> and <kbd>J</kbd>.</li>
             <li>Press <kbd>Space</kbd> with your thumb (or the Start button).</li>
@@ -93,6 +93,26 @@
           <div class="button-row">
             <button type="button" class="primary" id="calibrate-start">Start</button>
             <button type="button" class="secondary" id="calibrate-skip">Skip calibration</button>
+          </div>
+        </div>
+        <div class="panel" id="calibrate-grid-step" hidden>
+          <h3 id="grid-title" tabindex="-1">Map the keyboard</h3>
+          <p>Now show the camera where the keys are. Press each key below once with the finger named. Your other fingers can leave the home row.</p>
+          <p class="grid-prompt" id="grid-prompt" aria-live="assertive"></p>
+          <ol class="grid-steps" id="grid-steps">
+            <li><span class="step-mark" aria-hidden="true"></span><kbd>Q</kbd> left index</li>
+            <li><span class="step-mark" aria-hidden="true"></span><kbd>P</kbd> right index</li>
+            <li><span class="step-mark" aria-hidden="true"></span><kbd>Z</kbd> left index</li>
+            <li><span class="step-mark" aria-hidden="true"></span><kbd>/</kbd> right index</li>
+          </ol>
+          <p class="status-line" id="grid-status" role="status"></p>
+          <div class="button-row" id="grid-capture-buttons">
+            <button type="button" class="secondary" id="grid-restart">Start again from Q</button>
+            <button type="button" class="secondary" id="grid-skip">Skip keyboard map</button>
+          </div>
+          <div class="button-row" id="grid-review-buttons" hidden>
+            <button type="button" class="primary" id="grid-continue">Dots are on the keys, continue</button>
+            <button type="button" class="secondary" id="grid-redo">Redo keyboard map</button>
           </div>
         </div>
       </div>
@@ -182,6 +202,8 @@
       <div><dt>Input source</dt><dd id="debug-source">live</dd></div>
       <div><dt>Last attribution</dt><dd id="debug-last-attribution">--</dd></div>
     </dl>
+    <label class="checkbox-label"><input type="checkbox" id="debug-show-grid"> Show keyboard map on the video</label>
+    <p class="status-line" id="debug-grid-status"></p>
 
     <h3>Recording</h3>
     <div class="button-row">

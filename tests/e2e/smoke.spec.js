@@ -2,7 +2,9 @@
 // so nothing here depends on hand detection.
 import { test, expect } from "@playwright/test";
 import { buildRecording, serializeRecording } from "../../js/debug/recorder.js";
-import { generateSynthetic } from "../synthetic.js";
+import { GRID_CORNERS } from "../../js/keyboardGrid.js";
+import { fingertipLocation } from "../../js/landmarks.js";
+import { generateSynthetic, syntheticCornerTouches } from "../synthetic.js";
 
 // We fail on every console ERROR. Nothing is ignored at the moment, because in
 // Chromium 156 the fake camera and MediaPipe only log at warning/info level.
@@ -219,5 +221,60 @@ test("camera list refreshes on demand and when devices change", async ({ page })
   });
   await expect.poll(() => page.evaluate(() => window.__enumerateCalls)).toBeGreaterThan(0);
   await expect(page.locator("#camera-picker")).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
+test("calibration then keyboard map, driven by a replayed synthetic recording", async ({ page }, testInfo) => {
+  const errors = watchConsole(page);
+  // Hands rest on the home row; Space starts the home row capture; then the
+  // named index finger sits on Q, P, Z and / around each of those key presses.
+  const { frames } = generateSynthetic({ fps: 30, durationMs: 6600, startTime: 0, seed: 7 });
+  const touches = syntheticCornerTouches();
+  const cornerTimes = [4600, 5100, 5600, 6100];
+  for (const frame of frames) {
+    GRID_CORNERS.forEach((corner, i) => {
+      if (Math.abs(frame.t - cornerTimes[i]) > 200) return;
+      const { side, index } = fingertipLocation(corner.finger);
+      const hand = frame.hands.find((h) => h.side === side);
+      hand.landmarks[index] = { ...touches[corner.code], z: 0 };
+    });
+  }
+  // Key names longer than one character, so the replay does not start an exercise.
+  const keyEvents = [
+    { code: "Space", key: "Space", t: 300 },
+    ...GRID_CORNERS.map((corner, i) => ({ code: corner.code, key: corner.code, t: cornerTimes[i] })),
+  ];
+  const recording = buildRecording({ frames, keyEvents, meta: { note: "e2e keyboard map" } });
+
+  await page.goto("/index.html?skipSetup=1");
+  await page.keyboard.press("Escape");
+  await page.locator("#choose-recalibrate").click();
+  await expect(page.locator("#calibrate-home-step")).toBeVisible();
+  await expect(page.locator("#calibrate-grid-step")).toBeHidden();
+
+  await page.locator("#debug-toggle").click();
+  await page.locator("#debug-load").setInputFiles({
+    name: "keyboard-map.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(serializeRecording(recording)),
+  });
+
+  await expect(page.locator("#calibrate-grid-step")).toBeVisible({ timeout: 6_000 });
+  await expect(page.locator("#grid-status")).toContainText("Keyboard map saved", { timeout: 6_000 });
+  await expect(page.locator("#grid-continue")).toBeVisible();
+  await expect(page.locator("#grid-steps li.done")).toHaveCount(4);
+  await page.locator("#stage").screenshot({ path: testInfo.outputPath("keyboard-map.png") });
+
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("typingFormCoach.calibration") ?? "null"));
+  expect(saved?.keyboardGrid?.homography).toHaveLength(9);
+  expect(saved.keyboardGrid.homeRowErrorKeys).toBeLessThan(0.5);
+
+  // The debug panel covers part of the page; close it to reach the button.
+  await page.locator("#debug-toggle").click();
+  await page.locator("#grid-continue").click();
+  await expect(page.locator("#screen-choose")).toBeVisible();
+  await page.locator("#debug-toggle").click();
+  await page.locator("#debug-show-grid").check();
+  await expect(page.locator("#debug-grid-status")).toContainText("Keyboard map from");
   expect(errors).toEqual([]);
 });

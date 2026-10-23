@@ -9,7 +9,9 @@
     "test:core": "node --test \"tests/core/*.test.js\"",
     "e2e": "playwright test",
     "serve": "node scripts/serve.mjs --port 8080",
-    "check": "node scripts/check-syntax.mjs && npm test && npm run e2e"
+    "check": "node scripts/check-syntax.mjs && npm test && npm run e2e",
+    "evaluate": "node scripts/evaluate-recordings.mjs",
+    "fixture": "node scripts/make-fixture.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1"

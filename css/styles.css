@@ -449,6 +449,12 @@ body > .stage { display: none; }
 .instructions { padding-left: 1.4rem; }
 .instructions li { margin-bottom: 0.6rem; padding-left: 0.25rem; }
 .instructions li::marker { font-family: var(--font-marker); font-variation-settings: var(--marker-axes); font-weight: 700; color: var(--marker-ink); }
+.grid-prompt { font-size: 1.35rem; font-weight: 700; min-height: 2.2rem; }
+.grid-steps { list-style: none; padding-left: 0; display: grid; gap: 0.4rem; }
+.grid-steps li { display: flex; align-items: center; gap: 0.5rem; color: var(--ink-soft); }
+.grid-steps li.current { color: var(--ink); font-weight: 700; }
+.grid-steps li.done { color: var(--ok); }
+.grid-steps .step-mark { display: inline-block; width: 1.2em; text-align: center; font-weight: 700; }
 .countdown {
   font-family: var(--font-marker); font-variation-settings: var(--marker-axes);
   font-size: 3.5rem;

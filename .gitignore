@@ -3,6 +3,6 @@ test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
-recordings/
+/recordings/
 *.recording.json
 .DS_Store
