@@ -8,15 +8,27 @@
   <!-- Empty icon so the browser does not request /favicon.ico (a 404 on GitHub Pages). -->
   <link rel="icon" href="data:,">
   <!-- All paths are relative (no leading slash) so the app works under /repo-name/ on GitHub Pages. -->
+  <!-- The handwritten fonts are served from fonts/ so the page only talks to the hosts the e2e test allows. -->
+  <link rel="preload" href="fonts/shantell-sans-latin-full-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/monaspace-radon-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
 
   <header class="app-header">
-    <h1>Typing Form Coach</h1>
+    <h1 class="logo">Typing <span class="logo-circled">Form</span> Coach</h1>
+    <!-- Decorative: each screen's own heading already says which step it is. -->
+    <ol class="steps" aria-hidden="true">
+      <li data-step="setup">camera</li>
+      <li data-step="calibrate">home row</li>
+      <li data-step="choose">pick</li>
+      <li data-step="exercise">type</li>
+      <li data-step="summary">results</li>
+    </ol>
     <p class="privacy-line" id="privacy-line">
-      <span aria-hidden="true">&#128274;</span> Video stays on this device. Nothing is uploaded.
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 11.2c-.3 3.1-.2 6.2.2 8.9 3.6.5 7.3.4 10.8-.1.4-2.9.4-5.9.1-8.8-3.7-.3-7.4-.3-11.1 0Z"/><path d="M8.6 11c-.2-2.4.1-4.9 1.6-6.1 1.4-1 3.4-.9 4.6.3 1.1 1.2 1.2 3.6 1 5.7"/><path d="M12 14.6v2.3"/></svg>
+      Video stays on this device. Nothing is uploaded.
     </p>
   </header>
 
@@ -27,7 +39,7 @@
   <main id="main">
     <!-- ===== Screen 1: Setup ===== -->
     <section class="screen" id="screen-setup" data-screen="setup" aria-labelledby="setup-title" hidden>
-      <h2 id="setup-title" tabindex="-1">Step 1: Set up your camera</h2>
+      <h2 id="setup-title" tabindex="-1"><span class="step-tag">step 1</span> Set up your camera</h2>
       <div class="two-column">
         <div class="stage-slot" id="setup-stage-slot"></div>
         <div class="panel">
@@ -70,7 +82,7 @@
 
     <!-- ===== Screen 2: Calibrate ===== -->
     <section class="screen" id="screen-calibrate" data-screen="calibrate" aria-labelledby="calibrate-title" hidden>
-      <h2 id="calibrate-title" tabindex="-1">Step 2: Calibrate your home row</h2>
+      <h2 id="calibrate-title" tabindex="-1"><span class="step-tag">step 2</span> Calibrate your home row</h2>
       <div class="two-column">
         <div class="stage-slot" id="calibrate-stage-slot"></div>
         <div class="panel">
@@ -92,7 +104,7 @@
 
     <!-- ===== Screen 3: Choose exercise ===== -->
     <section class="screen" id="screen-choose" data-screen="choose" aria-labelledby="choose-title" hidden>
-      <h2 id="choose-title" tabindex="-1">Step 3: Choose an exercise</h2>
+      <h2 id="choose-title" tabindex="-1"><span class="step-tag">step 3</span> Choose an exercise</h2>
       <div class="level-list" id="level-list"></div>
       <div class="button-row">
         <button type="button" class="secondary" id="choose-back-setup">Camera setup</button>
@@ -110,19 +122,19 @@
         <span class="badge badge-replay" id="replay-badge" hidden>Replaying a recording</span>
       </div>
       <div class="two-column exercise-layout">
-        <div class="panel">
+        <div class="typing-column">
+          <dl class="live-stats">
+            <div><dt>WPM</dt><dd id="live-wpm">0</dd></div>
+            <div><dt>Accuracy</dt><dd id="live-accuracy">100%</dd></div>
+            <div><dt>Typed</dt><dd id="live-typed">0</dd></div>
+          </dl>
           <div class="typing-area" id="typing-area" tabindex="0" role="textbox" aria-readonly="true"
                aria-label="Typing area. Type the text shown." aria-describedby="next-finger">
             <p class="target-text" id="target-text"></p>
           </div>
           <p class="next-finger" id="next-finger">Next: --</p>
           <p class="feedback" id="feedback-text" aria-live="polite">Start typing when ready.</p>
-          <dl class="live-stats">
-            <div><dt>WPM</dt><dd id="live-wpm">0</dd></div>
-            <div><dt>Accuracy</dt><dd id="live-accuracy">100%</dd></div>
-            <div><dt>Typed</dt><dd id="live-typed">0</dd></div>
-          </dl>
-          <p class="hint">Press <kbd>Esc</kbd> to stop. <kbd>Backspace</kbd> fixes a mistake, but the mistake still counts.</p>
+          <p class="hint key-hints">Press <kbd>Esc</kbd> to stop. <kbd>Backspace</kbd> fixes a mistake, but the mistake still counts.</p>
           <div class="button-row">
             <button type="button" class="secondary" id="exercise-quit">Stop and choose another</button>
           </div>
