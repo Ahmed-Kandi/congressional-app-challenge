@@ -149,17 +149,6 @@ strong { font-weight: 400; color: var(--ink); background: linear-gradient(transp
   z-index: 30;
 }
 
-.icon {
-  width: 1.15em;
-  height: 1.15em;
-  vertical-align: -0.2em;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 /* ---- Header ---- */
 .app-header {
   display: flex;
@@ -218,18 +207,6 @@ body:has(#screen-summary:not([hidden])) .steps [data-step="summary"]::after {
   border: 2px solid var(--pen);
   border-radius: var(--wobbly-blob);
   transform: rotate(2deg);
-}
-
-.privacy-line {
-  margin: 0;
-  padding: 0.3rem 0.85rem;
-  background: var(--postit);
-  color: var(--postit-ink);
-  border: 2px solid var(--ink);
-  border-radius: var(--wobbly-sm);
-  box-shadow: var(--shadow-sm);
-  transform: rotate(1.2deg);
-  font-size: 1rem;
 }
 
 main { padding: 0.5rem 1.25rem 5rem; max-width: 1200px; margin: 0 auto; }

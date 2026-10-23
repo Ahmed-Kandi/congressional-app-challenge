@@ -25,11 +25,9 @@ function watchConsole(page) {
   return errors;
 }
 
-test("setup screen loads with camera picker and privacy line", async ({ page }) => {
+test("setup screen loads with camera picker", async ({ page }) => {
   const errors = watchConsole(page);
   await page.goto("/index.html");
-  await expect(page.locator("#privacy-line")).toBeVisible();
-  await expect(page.locator("#privacy-line")).toContainText("Video stays on this device. Nothing is uploaded.");
   await expect(page.locator("#screen-setup")).toBeVisible();
   // The fake camera should show up in the picker once permission is granted.
   await expect(page.locator("#camera-picker option")).not.toHaveCount(0);
