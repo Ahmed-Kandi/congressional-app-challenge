@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { attributeKeystroke } from "../../js/core/fingerAttribution.js";
 import { parseRecording } from "../../js/debug/replay.js";
 import { evaluateRecording, formatSummary, summarize } from "../../scripts/lib/evaluate.mjs";
-import { labelsPathFor, loadLabels, resolveLabels } from "../../scripts/lib/labels.mjs";
+import { labelsForRecording, resolveLabels } from "../../scripts/lib/labels.mjs";
 
 const FIXTURE_DIR = fileURLToPath(new URL("../fixtures/recordings/", import.meta.url));
 const targets = JSON.parse(readFileSync(join(FIXTURE_DIR, "targets.json"), "utf8"));
@@ -29,7 +29,7 @@ for (const fileName of fixtureNames) {
   const path = join(FIXTURE_DIR, fileName);
   const name = fileName.replace(/\.json$/, "");
   const recording = parseRecording(readFileSync(path, "utf8"));
-  const labels = loadLabels(labelsPathFor(path));
+  const { labels } = labelsForRecording(path, recording);
   const truths = resolveLabels(recording.keyEvents, labels);
   const arrivalLagMs = recording.meta?.frameLagMs ?? 0;
   const run = () => evaluateRecording(recording, truths, attributeKeystroke, { arrivalLagMs });

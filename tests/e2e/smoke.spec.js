@@ -278,3 +278,37 @@ test("calibration then keyboard map, driven by a replayed synthetic recording", 
   await expect(page.locator("#debug-grid-status")).toContainText("Keyboard map from");
   expect(errors).toEqual([]);
 });
+
+test("data collection run prompts, skips keys without hands, and downloads a labeled recording", async ({ page }) => {
+  const errors = watchConsole(page);
+  await page.goto("/index.html?skipSetup=1");
+  await page.keyboard.press("Escape");
+  await page.locator("#debug-toggle").click();
+  await page.locator("#debug-collect").click();
+  await expect(page.locator("#screen-collect")).toBeVisible();
+  await expect(page.locator("#debug-panel")).toBeHidden();
+  await expect(page.locator("#collect-calibration-note")).toContainText("camera is not running");
+
+  await page.locator("#collect-typist").fill("e2e");
+  await page.locator("#collect-start").click();
+  await expect(page.locator("#collect-prompt")).toContainText(/^Press .+ with your /);
+  await expect(page.locator("#collect-progress-text")).toHaveText(/^0 of \d+ prompts$/);
+  await expect(page.locator("#collect-hands")).toContainText("Waiting for both hands");
+
+  // The fake camera shows no hands, so a key press is recorded but not counted.
+  await page.keyboard.press("KeyF");
+  await expect(page.locator("#collect-status")).toContainText("Both hands must be in view");
+  await expect(page.locator("#collect-progress-text")).toHaveText(/^0 of /);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator("#collect-finish").click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^collection-.*\.json$/);
+  const recording = JSON.parse(await (await download.createReadStream()).toArray().then((chunks) => Buffer.concat(chunks).toString("utf8")));
+  expect(recording.format).toBe("typing-form-coach-recording");
+  expect(recording.keyEvents.map((k) => k.code)).toEqual(["KeyF"]);
+  expect(recording.labels).toMatchObject({ typist: "e2e", source: "data collection run", skip: "1" });
+  expect(recording.meta.collection.prompts).toBeGreaterThan(90);
+  await expect(page.locator("#collect-result")).toContainText("1 key (0 labeled)");
+  expect(errors).toEqual([]);
+});

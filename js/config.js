@@ -105,6 +105,19 @@ export const LIVE_STATS_INTERVAL_MS = 500;
 
 // ---- Debug tools ----
 
+// Data collection run (Debug > Data collection): how many times each key is
+// asked for. 31 keys x 3 + 4 Space prompts is about 97 prompts, 5 minutes.
+export const DATA_COLLECTION_REPEATS = 3;
+// Share of prompts that ask for a WRONG finger on purpose, so the recordings
+// include labeled mistakes as well as good form.
+export const DATA_COLLECTION_WRONG_SHARE = 0.2;
+// A key only counts if the newest camera frame is at most this old and shows
+// both hands. Older means the camera stalled or the hands left the view.
+export const DATA_COLLECTION_MAX_FRAME_AGE_MS = 500;
+// Keep recording this long after the last prompt, so the frames the finger
+// check looks at after the key (ATTRIBUTION_DELAY_MS) are in the file.
+export const DATA_COLLECTION_TAIL_MS = 500;
+
 // Motion traces show this much time before and after the key event.
 export const TRACE_WINDOW_BEFORE_MS = 300;
 export const TRACE_WINDOW_AFTER_MS = 300;
@@ -115,3 +128,5 @@ export const TRACE_HISTORY_LIMIT = 50;
 export const REPLAY_END_HOLD_MS = 500;
 // Safety cap on a recording (about 5 minutes at 60 fps) so memory stays sane.
 export const RECORDING_MAX_FRAMES = 18000;
+export const HOME_LIMIT_HAND_SPANS = 0.25;
+//works because short distance is what we will be demoing, and it sits safely under 0.33, range of next key.

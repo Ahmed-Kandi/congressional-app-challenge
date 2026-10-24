@@ -180,6 +180,51 @@
       <h3>Last 10 sessions</h3>
       <div id="history-summary"></div>
     </section>
+
+    <!-- ===== Debug screen: Data collection run ===== -->
+    <section class="screen" id="screen-collect" data-screen="collect" aria-labelledby="collect-title" hidden>
+      <h2 id="collect-title" tabindex="-1"><span class="step-tag">debug</span> Data collection run</h2>
+      <div class="two-column">
+        <div class="stage-slot" id="collect-stage-slot"></div>
+        <div class="panel">
+          <div id="collect-intro">
+            <p>The app asks for one key at a time and names the finger to use. It records the camera and writes down which finger it asked for, so the recording comes out already labeled.</p>
+            <ul class="instructions">
+              <li>Press exactly the key shown, with exactly the finger shown, then go back to the home row.</li>
+              <li>About 1 in 5 prompts asks for a <strong>wrong finger on purpose</strong>. Do what it says: those are the mistakes your finger check must catch.</li>
+              <li>Pressed with the wrong finger by accident? Press <kbd>Backspace</kbd> and the last key is asked again.</li>
+              <li>About 100 prompts, roughly 5 minutes. Keep the camera still.</li>
+            </ul>
+            <p class="status-line" id="collect-calibration-note"></p>
+            <label class="field-label" for="collect-typist">Typist name (saved in the labels)</label>
+            <input type="text" id="collect-typist" autocomplete="off">
+            <div class="button-row">
+              <button type="button" class="primary" id="collect-start">Start</button>
+              <button type="button" class="secondary" id="collect-back">Back</button>
+            </div>
+          </div>
+          <div id="collect-running" hidden>
+            <p class="collect-prompt" id="collect-prompt" tabindex="-1" aria-live="assertive"></p>
+            <p class="collect-progress-text" id="collect-progress-text"></p>
+            <progress id="collect-progress" max="1" value="0" aria-label="Data collection progress"></progress>
+            <p class="collect-hands" id="collect-hands" data-on="false"></p>
+            <p class="status-line" id="collect-status" role="status"></p>
+            <div class="button-row">
+              <button type="button" class="secondary" id="collect-finish">Finish early and download</button>
+              <button type="button" class="secondary" id="collect-cancel">Cancel without saving</button>
+            </div>
+          </div>
+          <div id="collect-done" hidden>
+            <p class="status-line" id="collect-result" role="status"></p>
+            <p>Move the file into the <code>recordings</code> folder of the project, then run <code>npm run evaluate -- recordings</code>. The labels are inside the file, so there is nothing else to write.</p>
+            <div class="button-row">
+              <button type="button" class="primary" id="collect-again">Another run</button>
+              <button type="button" class="secondary" id="collect-done-back">Back</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- The live camera view. Moved into whichever screen's stage slot is showing. -->
@@ -211,6 +256,7 @@
       <button type="button" id="debug-stop" disabled>Stop and download JSON</button>
     </div>
     <p class="status-line" id="debug-record-status" role="status">Not recording.</p>
+    <button type="button" id="debug-collect">Data collection run (labeled)</button>
     <label class="field-label" for="debug-load">Load recording for replay</label>
     <input type="file" id="debug-load" accept=".json,application/json">
     <p class="status-line" id="debug-replay-status" role="status"></p>

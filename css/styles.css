@@ -455,6 +455,14 @@ body > .stage { display: none; }
 .grid-steps li.current { color: var(--ink); font-weight: 700; }
 .grid-steps li.done { color: var(--ok); }
 .grid-steps .step-mark { display: inline-block; width: 1.2em; text-align: center; font-weight: 700; }
+
+/* ---- Data collection run ---- */
+.collect-prompt { font-size: 1.6rem; font-weight: 700; line-height: 1.4; min-height: 4.5rem; }
+.collect-prompt.on-purpose { color: var(--marker-ink); }
+.collect-progress-text { margin-bottom: 0.25rem; }
+.collect-hands[data-on="true"] { color: var(--ok); }
+.collect-hands[data-on="false"] { color: var(--marker-ink); font-weight: 700; }
+#debug-collect { margin-bottom: 0.75rem; }
 .countdown {
   font-family: var(--font-marker); font-variation-settings: var(--marker-axes);
   font-size: 3.5rem;

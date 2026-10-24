@@ -4,6 +4,10 @@
 
 import {
   ATTRIBUTION_DELAY_MS,
+  DATA_COLLECTION_MAX_FRAME_AGE_MS,
+  DATA_COLLECTION_REPEATS,
+  DATA_COLLECTION_TAIL_MS,
+  DATA_COLLECTION_WRONG_SHARE,
   LIVE_STATS_INTERVAL_MS,
   LOW_FPS_GRACE_MS,
   LOW_FPS_THRESHOLD,
@@ -25,6 +29,7 @@ import { ATTRIBUTION_IMPLEMENTED, attributeKeystroke } from "./core/fingerAttrib
 import { createCalibrationScreen, createKeyboardGridCapture, loadCalibration, saveCalibration } from "./calibration.js";
 import { LEVELS, getExerciseText } from "./exercises.js";
 import { evaluateAttribution, runAttribution, showFingerCheck } from "./feedback.js";
+import { buildPrompts, createCollectionSession, describePrompt } from "./debug/dataCollection.js";
 import { Recorder, downloadRecording } from "./debug/recorder.js";
 import { createReplayer, parseRecording } from "./debug/replay.js";
 import { createTraceStore, describeSnapshot, drawTraces, renderLegend } from "./debug/traces.js";
@@ -108,8 +113,27 @@ const ui = {
   summaryFingerAccuracy: $("summary-finger-accuracy"),
   summaryAgain: $("summary-again"),
   summaryChoose: $("summary-choose"),
+  // data collection run
+  collectIntro: $("collect-intro"),
+  collectRunning: $("collect-running"),
+  collectDone: $("collect-done"),
+  collectCalibrationNote: $("collect-calibration-note"),
+  collectTypist: $("collect-typist"),
+  collectStart: $("collect-start"),
+  collectBack: $("collect-back"),
+  collectPrompt: $("collect-prompt"),
+  collectProgressText: $("collect-progress-text"),
+  collectProgress: $("collect-progress"),
+  collectHands: $("collect-hands"),
+  collectStatus: $("collect-status"),
+  collectFinish: $("collect-finish"),
+  collectCancel: $("collect-cancel"),
+  collectResult: $("collect-result"),
+  collectAgain: $("collect-again"),
+  collectDoneBack: $("collect-done-back"),
   // debug
   debugToggle: $("debug-toggle"),
+  debugCollect: $("debug-collect"),
   debugPanel: $("debug-panel"),
   debugFps: $("debug-fps"),
   debugTimestampSource: $("debug-timestamp-source"),
@@ -164,9 +188,12 @@ const STAGE_SLOTS = {
   setup: "setup-stage-slot",
   calibrate: "calibrate-stage-slot",
   exercise: "exercise-stage-slot",
+  collect: "collect-stage-slot",
 };
 
 function showScreen(name) {
+  // Leaving the data collection screen mid-run throws the run away.
+  if (name !== "collect" && collection) cancelCollection();
   state.screen = name;
   for (const section of document.querySelectorAll(".screen")) {
     section.hidden = section.dataset.screen !== name;
@@ -644,7 +671,7 @@ function initKeyboard() {
   startKeyboardCapture({
     onKey: (keyEvent) => pipeline.ingestKey(keyEvent, "live"),
     // Calibration also uses Space, so stop it scrolling the page there too.
-    isExerciseActive: () => state.exerciseActive || state.screen === "calibrate",
+    isExerciseActive: () => state.exerciseActive || state.screen === "calibrate" || (state.screen === "collect" && collection !== null),
     typingArea: ui.typingArea,
   });
 }
@@ -657,6 +684,151 @@ pipeline.onKey((keyEvent) => {
   }
   // Then the keyboard map step listens for Q, P, Z and /.
   if (state.screen === "calibrate" && gridCapture.running) gridCapture.handleKey(keyEvent);
+});
+
+// ---------- Data collection run (debug) ----------
+
+let collection = null; // { session, recorder, seed, finishing } while a run is going
+
+/** Both hands in the newest LIVE frame, and that frame is recent. */
+function handsVisibleNow() {
+  const latest = frameBuffer.latest();
+  if (!latest || pipeline.source !== "live") return false;
+  if (performance.now() - latest.t > DATA_COLLECTION_MAX_FRAME_AGE_MS) return false;
+  return latest.hands.some((h) => h.side === "L") && latest.hands.some((h) => h.side === "R");
+}
+
+function showCollectPart(part) {
+  ui.collectIntro.hidden = part !== "intro";
+  ui.collectRunning.hidden = part !== "running";
+  ui.collectDone.hidden = part !== "done";
+}
+
+function collectSetupNote() {
+  if (!state.tracker?.running) return "The camera is not running. Go through Camera setup first, or every key will be skipped.";
+  if (!state.calibration) return "No calibration yet. Calibrate first (with the keyboard map) so the recording carries it.";
+  if (!state.calibration.keyboardGrid) return "Your calibration has no keyboard map. Calibrate again and map the keyboard first, if you can.";
+  return "Calibration with keyboard map found. Ready.";
+}
+
+function renderCollectPrompt(message) {
+  const { session } = collection;
+  const prompt = session.current();
+  if (prompt) {
+    // Show the key as a keycap so letters like l and I can't be mixed up.
+    const keycap = document.createElement("kbd");
+    keycap.textContent = prompt.label;
+    ui.collectPrompt.replaceChildren("Press ", keycap, describePrompt(prompt).slice(`Press ${prompt.label}`.length));
+  } else {
+    ui.collectPrompt.textContent = "All done. Saving...";
+  }
+  ui.collectPrompt.classList.toggle("on-purpose", Boolean(prompt?.onPurposeWrong));
+  const { done, total } = session.progress;
+  ui.collectProgressText.textContent = `${done} of ${total} prompts`;
+  ui.collectProgress.value = total ? done / total : 0;
+  if (message !== undefined) ui.collectStatus.textContent = message;
+}
+
+let lastHandsShown = null;
+function renderCollectHands() {
+  const visible = handsVisibleNow();
+  if (visible === lastHandsShown) return; // only touch the page when it changes
+  lastHandsShown = visible;
+  ui.collectHands.dataset.on = String(visible);
+  ui.collectHands.textContent = visible ? "✓ Both hands visible" : "✗ Waiting for both hands to be in view";
+}
+
+function startCollection() {
+  if (pipeline.source !== "live") {
+    ui.collectCalibrationNote.textContent = "Wait for the replay to finish first.";
+    return;
+  }
+  const seed = Math.floor(Math.random() * 2 ** 31);
+  const prompts = buildPrompts({ repeats: DATA_COLLECTION_REPEATS, wrongShare: DATA_COLLECTION_WRONG_SHARE, seed });
+  const recorder = new Recorder();
+  recorder.start({
+    ...recordingMeta(),
+    collection: { seed, repeats: DATA_COLLECTION_REPEATS, wrongShare: DATA_COLLECTION_WRONG_SHARE, prompts: prompts.length },
+  });
+  collection = { session: createCollectionSession(prompts), recorder, seed, finishing: false };
+  lastHandsShown = null;
+  showCollectPart("running");
+  renderCollectPrompt("");
+  renderCollectHands();
+  ui.collectPrompt.focus();
+}
+
+const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
+
+function finishCollection(reason = "") {
+  const { session, recorder, seed } = collection;
+  collection = null;
+  const { done, total } = session.progress;
+  const recording = recorder.stop({ fpsAtStop: state.tracker?.stats.fps ?? null });
+  const typist = ui.collectTypist.value.trim();
+  recording.labels = session.labels({
+    ...(typist ? { typist } : {}),
+    source: "data collection run",
+    notes: `Data collection run (seed ${seed}), ${done} of ${total} prompts done. ` +
+      "Each label is the finger the app asked for; keys that did not match a prompt are skipped.",
+  });
+  const fileName = downloadRecording(recording, "collection");
+  ui.collectResult.textContent = `${reason}Saved ${fileName}: ${plural(recording.keyEvents.length, "key")} (${session.countedKeys} labeled) and ${recording.frames.length} frames.`;
+  showCollectPart("done");
+  ui.collectAgain.focus();
+}
+
+function cancelCollection() {
+  collection.recorder.stop();
+  collection = null;
+  showCollectPart("intro");
+}
+
+function handleCollectionKey(keyEvent) {
+  if (collection.finishing) {
+    collection.recorder.addKey(keyEvent); // still part of the recording, just not labeled
+    collection.session.handleKey(keyEvent, { handsVisible: false });
+    return;
+  }
+  collection.recorder.addKey(keyEvent);
+  const { message } = collection.session.handleKey(keyEvent, { handsVisible: handsVisibleNow() });
+  renderCollectPrompt(message);
+  if (collection.session.finished) {
+    // Keep recording a moment so the frames just after the last key are saved too.
+    collection.finishing = true;
+    setTimeout(() => collection && finishCollection(), DATA_COLLECTION_TAIL_MS);
+  }
+}
+
+function initCollectScreen() {
+  screenEnterHandlers.collect = () => {
+    if (collection) return;
+    showCollectPart("intro");
+    ui.collectCalibrationNote.textContent = collectSetupNote();
+  };
+  ui.collectStart.addEventListener("click", startCollection);
+  ui.collectFinish.addEventListener("click", () => collection && finishCollection("Finished early. "));
+  ui.collectCancel.addEventListener("click", () => collection && cancelCollection());
+  ui.collectAgain.addEventListener("click", () => screenEnterHandlers.collect());
+  ui.collectBack.addEventListener("click", () => showScreen("choose"));
+  ui.collectDoneBack.addEventListener("click", () => showScreen("choose"));
+  ui.debugCollect.addEventListener("click", () => {
+    // The debug panel covers the page; close it before showing the run.
+    if (!ui.debugPanel.hidden) ui.debugToggle.click();
+    showScreen("collect");
+  });
+}
+
+pipeline.onFrame((frame, from) => {
+  if (from !== "live" || !collection) return;
+  collection.recorder.addFrame(frame);
+  renderCollectHands();
+  // The recorder stops itself at RECORDING_MAX_FRAMES; save what we have.
+  if (!collection.recorder.recording) finishCollection("Stopped at the recording size limit. ");
+});
+
+pipeline.onKey((keyEvent, from) => {
+  if (from === "live" && state.screen === "collect" && collection) handleCollectionKey(keyEvent);
 });
 
 // ---------- Debug panel ----------
@@ -839,6 +1011,7 @@ function start() {
   initSummaryScreen();
   initKeyboard();
   initDebugPanel();
+  initCollectScreen();
   setInterval(() => {
     checkFps();
     updateDebugStats();

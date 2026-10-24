@@ -7,14 +7,15 @@
 // Options:
 //   --list              print the numbered keys and stop (no scoring)
 //   --verbose           print every key: what was used, what the function said
-//   --assume-expected   score recordings that have no .labels.json as if every key
+//   --assume-expected   score recordings that have no labels as if every key
 //                       was typed with the expected finger (only if that is true!)
 //   --no-calibration    call the function with calibration = null
 //   --lag <ms>          how late frames arrive (default: the recording's frameLagMs, else 0)
 //   --delay <ms>        how long after the key the function is called (default ATTRIBUTION_DELAY_MS)
 //   --json <file>       also save every row and summary as JSON
 //
-// See scripts/lib/labels.mjs for the labels file format.
+// Labels come from a .labels.json file next to the recording, or from inside
+// the recording (data collection runs). See js/debug/labels.js for the format.
 
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -23,7 +24,7 @@ import { ATTRIBUTION_DELAY_MS } from "../js/config.js";
 import { parseRecording } from "../js/debug/replay.js";
 import { describeFingers, expectedFingers } from "../js/fingerMap.js";
 import { evaluateRecording, formatRow, formatSummary, summarize } from "./lib/evaluate.mjs";
-import { labelsPathFor, loadLabels, resolveLabels } from "./lib/labels.mjs";
+import { labelsForRecording, labelsPathFor, resolveLabels } from "./lib/labels.mjs";
 
 function parseArgs(argv) {
   const options = { paths: [], list: false, verbose: false, assumeExpected: false, noCalibration: false, lag: null, delay: ATTRIBUTION_DELAY_MS, json: null };
@@ -89,11 +90,12 @@ function main() {
       listKeys(recording);
       continue;
     }
-    let labels = loadLabels(labelsPathFor(file));
-    let title = basename(file);
+    const found = labelsForRecording(file, recording);
+    let labels = found?.labels;
+    let title = found ? `${basename(file)} (${found.source})` : basename(file);
     if (!labels) {
       if (!options.assumeExpected) {
-        console.log(`Skipping ${basename(file)}: no ${basename(labelsPathFor(file))} (or pass --assume-expected).\n`);
+        console.log(`Skipping ${basename(file)}: no labels inside it and no ${basename(labelsPathFor(file))} (or pass --assume-expected).\n`);
         continue;
       }
       labels = { default: "expected" };

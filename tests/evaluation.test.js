@@ -3,9 +3,19 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ATTRIBUTION_DELAY_MS } from "../js/config.js";
 import { bufferAtCallTime, evaluateRecording, summarize } from "../scripts/lib/evaluate.mjs";
-import { formatKeyList, labelsFromTruths, parseKeyList, resolveLabels, validateLabels } from "../scripts/lib/labels.mjs";
+import {
+  formatKeyList,
+  labelsForRecording,
+  labelsFromTruths,
+  parseKeyList,
+  resolveLabels,
+  validateLabels,
+} from "../scripts/lib/labels.mjs";
 import { trimRecording } from "../scripts/make-fixture.mjs";
 import { generateSynthetic } from "./synthetic.js";
 
@@ -112,4 +122,20 @@ test("trimRecording keeps chosen keys, their frames and their labels", () => {
   assert.equal(trimmed.recording.meta.calibration.handSpan, 1);
   const x = trimmed.recording.frames[0].hands[0].landmarks[0].x;
   assert.equal(x, Math.round(x * 1e4) / 1e4);
+});
+
+test("labelsForRecording: a labels file wins, else labels inside the recording, else null", () => {
+  const dir = mkdtempSync(join(tmpdir(), "labels-test-"));
+  const inside = { default: "expected", typist: "inside" };
+  const recording = { keyEvents: KEYS, labels: inside };
+
+  const embeddedOnly = join(dir, "a.json");
+  assert.deepEqual(labelsForRecording(embeddedOnly, recording), { labels: inside, source: "labels inside the recording" });
+
+  const withFile = join(dir, "b.json");
+  writeFileSync(join(dir, "b.labels.json"), JSON.stringify({ default: "unknown", typist: "file" }));
+  assert.equal(labelsForRecording(withFile, recording).labels.typist, "file");
+
+  assert.equal(labelsForRecording(join(dir, "c.json"), { keyEvents: KEYS }), null);
+  assert.throws(() => labelsForRecording(embeddedOnly, { keyEvents: KEYS, labels: { default: "TOES" } }), /not "expected"/);
 });

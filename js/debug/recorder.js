@@ -55,16 +55,20 @@ export class Recorder {
   }
 }
 
-/** Save a recording as a .json file through the browser's normal download. */
-export function downloadRecording(recording) {
+/**
+ * Save a recording as a .json file through the browser's normal download.
+ * @returns {string} the file name used
+ */
+export function downloadRecording(recording, namePrefix = "typing-recording") {
   const blob = new Blob([serializeRecording(recording)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   link.href = url;
-  link.download = `typing-recording-${stamp}.json`;
+  link.download = `${namePrefix}-${stamp}.json`;
   document.body.append(link);
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return link.download;
 }

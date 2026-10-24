@@ -16,7 +16,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FRAME_BUFFER_WINDOW_MS } from "../js/config.js";
 import { parseRecording } from "../js/debug/replay.js";
-import { labelsFromTruths, labelsPathFor, loadLabels, parseKeyList, resolveLabels } from "./lib/labels.mjs";
+import { labelsForRecording, labelsFromTruths, labelsPathFor, parseKeyList, resolveLabels } from "./lib/labels.mjs";
 
 export const FIXTURE_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "tests", "fixtures", "recordings");
 // Keep frames up to this long after each kept key (covers ATTRIBUTION_DELAY_MS with room to spare).
@@ -79,9 +79,9 @@ function main() {
     throw new Error("Usage: npm run fixture -- <recording.json> <fixture-name> [--keys 1-30] [--assume-expected]  (name: lowercase letters, digits, dashes)");
   }
   const recording = parseRecording(readFileSync(recordingPath, "utf8"));
-  let labels = loadLabels(labelsPathFor(recordingPath));
+  let labels = labelsForRecording(recordingPath, recording)?.labels;
   if (!labels) {
-    if (!assumeExpected) throw new Error(`No ${basename(labelsPathFor(recordingPath))} next to the recording (or pass --assume-expected).`);
+    if (!assumeExpected) throw new Error(`No labels inside the recording and no ${basename(labelsPathFor(recordingPath))} next to it (or pass --assume-expected).`);
     labels = { default: "expected", verified: false, notes: "ASSUMED: every key typed with the expected finger. Not checked by a person yet." };
   }
   const truths = resolveLabels(recording.keyEvents, labels);
