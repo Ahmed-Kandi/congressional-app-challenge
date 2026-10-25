@@ -39,6 +39,8 @@
   --highlighter: #ffec7a;
   --tape: rgba(170, 160, 145, 0.38);
   --ok: #2f7a45;
+  --beat-good: rgba(47, 122, 69, 0.45);   /* translucent edge glow, right key + right finger */
+  --beat-bad: rgba(217, 48, 48, 0.45);    /* wrong key or wrong finger */
   --ok-bg: #e4f3e2;
   --bad-bg: #ffe4e1;
   --warn-bg: #fff9c4;
@@ -71,6 +73,8 @@
 /* Night notebook: graphite paper with chalky ink and a monkeytype-yellow highlighter. */
 @media (prefers-color-scheme: dark) {
   :root {
+    --beat-good: rgba(110, 205, 135, 0.38);
+    --beat-bad: rgba(255, 107, 107, 0.42);
     --paper: #2c2e31;
     --card: #343639;
     --ink: #ebe6db;
@@ -643,6 +647,8 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 .feedback[data-status="wrong"] { color: var(--marker-ink); text-decoration: underline wavy var(--marker); text-underline-offset: 0.25em; text-decoration-skip-ink: none; }
 .feedback[data-status="wrong"]::before { content: "\2717  "; }
 .feedback[data-status="unavailable"] { color: var(--ink-soft); }
+.feedback[data-status="wrong-key"] { color: var(--marker-ink); }
+.feedback[data-status="wrong-key"]::before { content: "\2260  "; }
 .key-hints { color: var(--pencil); }
 
 /* Focus mode, like monkeytype: while the typing area has focus, the chrome fades out of the way. */
@@ -835,6 +841,18 @@ tr:last-child td { border-bottom: 0; }
   .live-stats { gap: 0.25rem 1.5rem; }
   .live-stats dd { font-size: 2rem; }
 }
+
+/* ---- Beat flash: one translucent pulse per keystroke (js/beatFlash.js) ---- */
+.beat-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 900;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 42%, var(--beat-color, transparent) 100%);
+}
+.beat-flash[data-beat="good"] { --beat-color: var(--beat-good); }
+.beat-flash[data-beat="bad"] { --beat-color: var(--beat-bad); }
 
 /* Respect reduced motion: no transitions or animations anywhere. */
 @media (prefers-reduced-motion: reduce) {

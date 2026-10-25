@@ -161,9 +161,13 @@ test("when the finger check returns results, feedback and finger stats appear", 
   await page.keyboard.type("f", { delay: 0 });
   await expect(page.locator("#feedback-text")).toHaveText("Correct finger: left index.");
   await expect(page.locator("#feedback-text")).toHaveAttribute("data-status", "correct");
+  // Right key and right finger: a green beat.
+  await expect(page.locator("#beat-flash")).toHaveAttribute("data-beat", "good");
   await page.keyboard.type("ff j", { delay: 30 });
   await expect(page.locator("#feedback-text")).toHaveText("Wrong finger: used left index, should be right index.");
   await expect(page.locator("#feedback-text")).toHaveAttribute("data-status", "wrong");
+  // Right key, wrong finger: a red beat.
+  await expect(page.locator("#beat-flash")).toHaveAttribute("data-beat", "bad");
 
   const target = await page.locator("#target-text").textContent();
   await page.keyboard.type(target.slice(5), { delay: 15 });
@@ -316,5 +320,26 @@ test("data collection run prompts, skips keys without hands, and downloads a lab
   expect(recording.labels).toMatchObject({ typist: "e2e", source: "data collection run", skip: "1" });
   expect(recording.meta.collection.prompts).toBeGreaterThan(90);
   await expect(page.locator("#collect-result")).toContainText("1 key (0 labeled)");
+  expect(errors).toEqual([]);
+});
+
+test("a typo says which key was wrong instead of judging the finger", async ({ page }) => {
+  const errors = watchConsole(page);
+  await page.goto("/index.html?skipSetup=1");
+  await expect(page.locator("#screen-exercise")).toBeVisible();
+  const target = await page.locator("#target-text").textContent();
+  // A home row letter that is not the first character, so it is surely a typo.
+  const typo = "asdfjkl".split("").find((c) => c !== target[0]);
+  await page.keyboard.type(typo);
+  await expect(page.locator("#feedback-text")).toHaveText(`Wrong key: you typed "${typo}", the text needs "${target[0]}".`);
+  await expect(page.locator("#feedback-text")).toHaveAttribute("data-status", "wrong-key");
+  // A wrong key flashes red right away, and the pulse fades by itself.
+  await expect(page.locator("#beat-flash")).toHaveAttribute("data-beat", "bad");
+  expect(await page.locator("#beat-flash").evaluate((el) => el.getAnimations().length)).toBe(1);
+  await expect.poll(() => page.locator("#beat-flash").evaluate((el) => el.getAnimations().length)).toBe(0);
+  // The next, correct key goes back to the normal finger check message.
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type(target[0]);
+  await expect(page.locator("#feedback-text")).toHaveText("Finger check unavailable.");
   expect(errors).toEqual([]);
 });

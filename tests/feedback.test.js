@@ -3,7 +3,7 @@
 // by hand; nothing computes a finger.)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { evaluateAttribution, feedbackMessage, runAttribution } from "../js/feedback.js";
+import { beatKind, evaluateAttribution, feedbackMessage, runAttribution, wrongKeyMessage } from "../js/feedback.js";
 import { MIN_ATTRIBUTION_CONFIDENCE } from "../js/config.js";
 import { ATTRIBUTION_IMPLEMENTED, attributeKeystroke } from "../js/core/fingerAttribution.js";
 import { FrameBuffer } from "../js/frameBuffer.js";
@@ -66,4 +66,20 @@ test("messages say right or wrong in words, not just color", () => {
   );
   assert.equal(feedbackMessage({ status: "correct", used: "L_INDEX" }, ["L_INDEX"]), "Correct finger: left index.");
   assert.equal(feedbackMessage({ status: "unavailable" }, ["L_INDEX"]), "Finger check unavailable.");
+});
+
+test("a typo is described as a wrong key, naming Space in words", () => {
+  assert.equal(wrongKeyMessage("d", "f"), 'Wrong key: you typed "d", the text needs "f".');
+  assert.equal(wrongKeyMessage(" ", "a"), 'Wrong key: you typed Space, the text needs "a".');
+  assert.equal(wrongKeyMessage("j", " "), 'Wrong key: you typed "j", the text needs Space.');
+});
+
+test("beat flash: green only for right key and right finger, red for either mistake, none when unsure", () => {
+  const typed = (correct) => ({ kind: "char", correct });
+  assert.equal(beatKind(typed(true), { status: "correct" }), "good");
+  assert.equal(beatKind(typed(true), { status: "wrong" }), "bad");
+  assert.equal(beatKind(typed(true), { status: "unavailable" }), null);
+  assert.equal(beatKind(typed(false), { status: "correct" }), "bad");
+  assert.equal(beatKind(typed(false), null), "bad");
+  assert.equal(beatKind({ kind: "backspace", correct: null }, { status: "correct" }), null);
 });

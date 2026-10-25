@@ -43,6 +43,20 @@ export function evaluateAttribution(result, expected) {
   return { status, used: result.finger, confidence: result.confidence };
 }
 
+/** How a character reads in a sentence: a space is invisible, so name it. */
+function charName(char) {
+  return char === " " ? "Space" : `"${char}"`;
+}
+
+/**
+ * The sentence for a typo. A finger verdict there would confuse: "Correct
+ * finger" on the wrong letter reads like praise, so the screen talks about
+ * the key instead. (The finger check is still stored for the summary.)
+ */
+export function wrongKeyMessage(typedChar, targetChar) {
+  return `Wrong key: you typed ${charName(typedChar)}, the text needs ${charName(targetChar)}.`;
+}
+
 /** The sentence shown to the student. Never relies on color: it says right or wrong in words. */
 export function feedbackMessage(check, expected) {
   switch (check.status) {
@@ -59,6 +73,26 @@ export function feedbackMessage(check, expected) {
  * Show a finger check on screen.
  * @param {{textElement: HTMLElement, overlay: import('./overlay.js').Overlay}} targets
  */
+/**
+ * Which beat flash a keystroke gets: "good" only when the key AND the finger
+ * were right, "bad" for a wrong key or a wrong finger, and null when the
+ * finger check is unsure, so a guess never flashes red at the student.
+ */
+export function beatKind(keystroke, check) {
+  if (keystroke.kind !== "char") return null;
+  if (!keystroke.correct) return "bad";
+  if (check?.status === "correct") return "good";
+  if (check?.status === "wrong") return "bad";
+  return null;
+}
+
+/** Show a typo instead of a finger check (no fingertip flash). */
+export function showWrongKey({ textElement, overlay }, typedChar, targetChar) {
+  textElement.textContent = wrongKeyMessage(typedChar, targetChar);
+  textElement.dataset.status = "wrong-key";
+  overlay.clearFlash();
+}
+
 export function showFingerCheck({ textElement, overlay }, check, expected) {
   textElement.textContent = feedbackMessage(check, expected);
   textElement.dataset.status = check.status;

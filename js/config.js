@@ -89,6 +89,9 @@ export const KEYBOARD_GRID_MAX_HOME_ROW_ERROR_KEYS = 1.0;
 
 // How long a fingertip flashes green or red after a keystroke.
 export const FLASH_DURATION_MS = 400;
+// One full-screen "beat" per keystroke: a quick rise, then a fade. Short enough
+// that beats at 60 WPM (a key every 200 ms) read as separate pulses.
+export const BEAT_FLASH_DURATION_MS = 450;
 
 // ---- Session statistics ----
 
@@ -130,3 +133,7 @@ export const REPLAY_END_HOLD_MS = 500;
 export const RECORDING_MAX_FRAMES = 18000;
 export const HOME_LIMIT_HAND_SPANS = 0.25;
 //works because short distance is what we will be demoing, and it sits safely under 0.33, range of next key.
+export const ON_KEY_LIMIT_KEYS = 1.0;
+//a fingertip further than this from the pressed key (in key widths) is not on the key.
+export const CLEAR_WINNER_MARGIN_KEYS = 0.3;
+//the nearest fingertip has to be this much closer than the next one, otherwise it's too close to call.

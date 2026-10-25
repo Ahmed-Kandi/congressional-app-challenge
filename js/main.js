@@ -28,8 +28,9 @@ import {
 import { ATTRIBUTION_IMPLEMENTED, attributeKeystroke } from "./core/fingerAttribution.js";
 import { createCalibrationScreen, createKeyboardGridCapture, loadCalibration, saveCalibration } from "./calibration.js";
 import { LEVELS, getExerciseText } from "./exercises.js";
-import { evaluateAttribution, runAttribution, showFingerCheck } from "./feedback.js";
+import { beatKind, evaluateAttribution, runAttribution, showFingerCheck, showWrongKey } from "./feedback.js";
 import { buildPrompts, createCollectionSession, describePrompt } from "./debug/dataCollection.js";
+import { createBeatFlash } from "./beatFlash.js";
 import { Recorder, downloadRecording } from "./debug/recorder.js";
 import { createReplayer, parseRecording } from "./debug/replay.js";
 import { createTraceStore, describeSnapshot, drawTraces, renderLegend } from "./debug/traces.js";
@@ -181,6 +182,7 @@ const state = {
 const frameBuffer = new FrameBuffer();
 const pipeline = createPipeline({ frameBuffer });
 const overlay = new Overlay(ui.overlayCanvas, ui.video);
+const beatFlash = createBeatFlash($("beat-flash"));
 
 // ---------- Screens ----------
 
@@ -570,6 +572,8 @@ function handleExerciseKey(keyEvent) {
   const keystroke = session.handleKey(keyEvent);
   if (!keystroke) return;
   updateExerciseDisplay();
+  // A wrong key is known at once, so its beat does not wait for the finger check.
+  if (keystroke.kind === "char" && !keystroke.correct) beatFlash.beat("bad");
   scheduleFingerCheck(session, keystroke, keyEvent);
   if (session.isComplete) finishExercise();
 }
@@ -598,7 +602,13 @@ function runFingerCheck(session, keystroke, keyEvent) {
   if (problem) console.warn(problem);
   // Only update the screen if this keystroke belongs to the exercise on screen.
   if (session === state.session && state.screen === "exercise") {
-    showFingerCheck({ textElement: ui.feedbackText, overlay }, check, keystroke.expectedFingers);
+    const targets = { textElement: ui.feedbackText, overlay };
+    if (keystroke.kind === "char" && !keystroke.correct) {
+      showWrongKey(targets, keystroke.key, keystroke.targetChar);
+    } else {
+      showFingerCheck(targets, check, keystroke.expectedFingers);
+      beatFlash.beat(beatKind(keystroke, check));
+    }
   }
 }
 
