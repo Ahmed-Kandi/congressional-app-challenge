@@ -37,8 +37,11 @@ export const FRAME_BUFFER_WINDOW_MS = 2000;
 
 // Wait this long after a key event before asking which finger pressed it.
 // Camera frames arrive later than key events, so we wait for the frames that
-// show the finger landing on the key to reach the buffer.
-export const ATTRIBUTION_DELAY_MS = 120;
+// show the finger landing on the key to reach the buffer. The finger check uses
+// the frame nearest the key time; at 54 fps with 20-30 ms of frame lag
+// (measured 2026-10-23) that frame arrives 30-40 ms after the key, so 60 ms is
+// enough and halves the wait before the flash (it was 120).
+export const ATTRIBUTION_DELAY_MS = 60;
 
 // Attribution results below this confidence are shown as "finger check
 // unavailable" instead of right or wrong, so a guess never scolds the student.
@@ -89,6 +92,9 @@ export const KEYBOARD_GRID_MAX_HOME_ROW_ERROR_KEYS = 1.0;
 
 // How long a fingertip flashes green or red after a keystroke.
 export const FLASH_DURATION_MS = 400;
+// A mistake stays marked longer (the cross on the finger used and the check on
+// the finger that should have pressed), so there is time to look at both.
+export const MISTAKE_FLASH_DURATION_MS = 1200;
 // One full-screen "beat" per keystroke: a quick rise, then a fade. Short enough
 // that beats at 60 WPM (a key every 200 ms) read as separate pulses.
 export const BEAT_FLASH_DURATION_MS = 450;

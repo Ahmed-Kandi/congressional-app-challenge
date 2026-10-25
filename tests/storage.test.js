@@ -61,9 +61,9 @@ test("no backend at all (null) works too", () => {
 
 test("settings: defaults, then merged with what was saved", () => {
   const store = createStorage(memoryBackend());
-  assert.deepEqual(store.loadSettings(), { mirrored: false, cameraFacing: "above" });
+  assert.deepEqual(store.loadSettings(), { mirrored: false, cameraFacing: "above", flipView: true });
   store.saveSettings({ mirrored: true });
-  assert.deepEqual(store.loadSettings(), { mirrored: true, cameraFacing: "above" });
+  assert.deepEqual(store.loadSettings(), { mirrored: true, cameraFacing: "above", flipView: true });
 });
 
 test("history keeps the newest 10, newest first", () => {

@@ -60,6 +60,7 @@ const ui = {
   cameraPicker: $("camera-picker"),
   cameraRefresh: $("camera-refresh"),
   mirroredToggle: $("mirrored-toggle"),
+  flipToggle: $("flip-toggle"),
   facingRadios: document.querySelectorAll('input[name="camera-facing"]'),
   indicatorLeft: $("indicator-left"),
   indicatorRight: $("indicator-right"),
@@ -316,7 +317,15 @@ function checkFps() {
 
 function applySettingsToControls() {
   ui.mirroredToggle.checked = state.settings.mirrored;
+  ui.flipToggle.checked = state.settings.flipView;
   for (const radio of ui.facingRadios) radio.checked = radio.value === state.settings.cameraFacing;
+}
+
+// "Hands facing me" turns only the picture around (upside down and mirrored).
+// Tracking data and the finger check never see it, so it cannot change any result.
+function applyFlipView() {
+  ui.stage.classList.toggle("flipped", state.settings.flipView);
+  overlay.setFlipped(state.settings.flipView);
 }
 
 function updateSetting(name, value) {
@@ -356,7 +365,12 @@ function updateSetupIndicators(frame) {
 
 function initSetupScreen() {
   applySettingsToControls();
+  applyFlipView();
   ui.mirroredToggle.addEventListener("change", () => updateSetting("mirrored", ui.mirroredToggle.checked));
+  ui.flipToggle.addEventListener("change", () => {
+    updateSetting("flipView", ui.flipToggle.checked);
+    applyFlipView();
+  });
   for (const radio of ui.facingRadios) {
     radio.addEventListener("change", () => radio.checked && updateSetting("cameraFacing", radio.value));
   }

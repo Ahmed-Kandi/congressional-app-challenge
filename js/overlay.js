@@ -1,8 +1,9 @@
 // Draws the hand skeleton on a canvas laid exactly over the video, and
-// flashes a fingertip green (right finger) or red (wrong finger).
+// flashes a fingertip green (right finger) or red (wrong finger; orange for
+// the wrong hand), with a dashed check on the finger that should have pressed.
 // Colors are never the only signal: flashes also draw a check or a cross.
 
-import { FLASH_DURATION_MS } from "./config.js";
+import { FLASH_DURATION_MS, MISTAKE_FLASH_DURATION_MS } from "./config.js";
 import { KEY_LAYOUT, keyCenterInImage, keyLabel } from "./keyboardGrid.js";
 import {
   FINGERTIP_BY_FINGER_NAME,
@@ -20,6 +21,7 @@ const STYLE = {
   labelText: "#ffffff",
   correct: "#2e9d4f",
   wrong: "#d93025",
+  warn: "#e8860c",
   blankBackground: "#202124",
   gridDot: "#ff8a65",
   gridLabel: "#ffffff",
@@ -43,9 +45,16 @@ export class Overlay {
     this.context = canvas.getContext("2d");
     this.video = video;
     this.lastFrame = null;
-    this.activeFlash = null; // { fingerId, correct, until }
+    this.activeFlash = null; // { fingerId, correct, shouldUse, wrongHand, until }
     this.blankMode = false;
     this.keyboardGrid = null; // drawn when set, so the student can check it lines up
+    this.flipped = false; // "hands facing me": draw turned around to match the video
+  }
+
+  /** Draw everything upside down and mirrored, matching the CSS-turned video. Display only. */
+  setFlipped(on) {
+    this.flipped = on;
+    this.redraw();
   }
 
   /** Show key centers from a keyboard grid (see keyboardGrid.js), or null to hide them. */
@@ -63,8 +72,11 @@ export class Overlay {
   matchVideoSize() {
     const width = !this.blankMode && this.video?.videoWidth ? this.video.videoWidth : BLANK_WIDTH;
     const height = !this.blankMode && this.video?.videoHeight ? this.video.videoHeight : BLANK_HEIGHT;
-    if (this.canvas.width !== width) this.canvas.width = width;
-    if (this.canvas.height !== height) this.canvas.height = height;
+    if (this.canvas.width === width && this.canvas.height === height) return;
+    this.canvas.width = width;
+    this.canvas.height = height;
+    // The exercise layout sizes the camera view from its shape (styles.css, .stage-slot-wide).
+    this.canvas.parentElement?.style.setProperty("--video-aspect", String(width / height));
   }
 
   /** Draw one frame of hands. Called for every tracked frame. */
@@ -87,7 +99,14 @@ export class Overlay {
   }
 
   toPixels(point) {
-    return { x: point.x * this.canvas.width, y: point.y * this.canvas.height };
+    const x = this.flipped ? 1 - point.x : point.x;
+    const y = this.flipped ? 1 - point.y : point.y;
+    return { x: x * this.canvas.width, y: y * this.canvas.height };
+  }
+
+  /** Which way is "past the fingertips" on screen: up normally, down when flipped. */
+  get outward() {
+    return this.flipped ? 1 : -1;
   }
 
   drawHand(hand) {
@@ -136,27 +155,32 @@ export class Overlay {
     ctx.fill();
   }
 
+  /** A small label on the wrist, on the side away from the fingers. */
   label({ x, y }, text) {
     const ctx = this.context;
+    const centerY = y - this.outward * 29;
     ctx.font = "bold 22px system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = STYLE.labelBackground;
-    ctx.fillRect(x - 16, y + 14, 32, 30);
+    ctx.fillRect(x - 16, centerY - 15, 32, 30);
     ctx.fillStyle = STYLE.labelText;
-    ctx.fillText(text, x, y + 29);
+    ctx.fillText(text, x, centerY);
   }
 
   /**
-   * Highlight a fingertip after attribution.
+   * Highlight a fingertip after attribution. For a wrong finger, `shouldUse`
+   * also marks the finger that should have pressed the key, and `wrongHand`
+   * colors the mistake orange. Mistakes stay up longer so there is time to look.
    * With reduced motion the highlight stays (no blinking) until the next result.
    */
-  flash(fingerId, correct) {
-    const until = prefersReducedMotion() ? Infinity : performance.now() + FLASH_DURATION_MS;
-    this.activeFlash = { fingerId, correct, until };
+  flash(fingerId, correct, { shouldUse = null, wrongHand = false } = {}) {
+    const duration = correct ? FLASH_DURATION_MS : MISTAKE_FLASH_DURATION_MS;
+    const until = prefersReducedMotion() ? Infinity : performance.now() + duration;
+    this.activeFlash = { fingerId, correct, shouldUse, wrongHand, until };
     this.redraw();
     if (until !== Infinity) {
-      setTimeout(() => this.redraw(), FLASH_DURATION_MS + 20);
+      setTimeout(() => this.redraw(), duration + 20);
     }
   }
 
@@ -172,25 +196,37 @@ export class Overlay {
       this.activeFlash = null;
       return;
     }
-    const { side, index } = fingertipLocation(flash.fingerId);
+    if (flash.correct) {
+      this.markFinger(flash.fingerId, STYLE.correct, "✓", false);
+      return;
+    }
+    this.markFinger(flash.fingerId, flash.wrongHand ? STYLE.warn : STYLE.wrong, "✗", false);
+    // The finger that should have pressed the key: a dashed ring and a check.
+    if (flash.shouldUse) this.markFinger(flash.shouldUse, STYLE.correct, "✓", true);
+  }
+
+  /** Ring a fingertip and put a symbol past its tip, so the result does not depend on color. */
+  markFinger(fingerId, color, symbol, dashed) {
+    const { side, index } = fingertipLocation(fingerId);
     const hand = this.lastFrame?.hands.find((h) => h.side === side);
     if (!hand) return;
     const tip = this.toPixels(hand.landmarks[index]);
     const ctx = this.context;
-    const color = flash.correct ? STYLE.correct : STYLE.wrong;
 
     ctx.beginPath();
     ctx.arc(tip.x, tip.y, 20, 0, Math.PI * 2);
     ctx.lineWidth = 5;
     ctx.strokeStyle = color;
+    ctx.setLineDash(dashed ? [7, 5] : []);
     ctx.stroke();
-    // Symbol above the fingertip so the result does not depend on color.
+    ctx.setLineDash([]);
+    const symbolY = tip.y + this.outward * 48;
     ctx.font = "bold 28px system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = STYLE.labelBackground;
-    ctx.fillRect(tip.x - 18, tip.y - 66, 36, 36);
+    ctx.fillRect(tip.x - 18, symbolY - 18, 36, 36);
     ctx.fillStyle = color;
-    ctx.fillText(flash.correct ? "✓" : "✗", tip.x, tip.y - 48);
+    ctx.fillText(symbol, tip.x, symbolY);
   }
 }

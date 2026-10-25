@@ -3,7 +3,14 @@
 // by hand; nothing computes a finger.)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { beatKind, evaluateAttribution, feedbackMessage, runAttribution, wrongKeyMessage } from "../js/feedback.js";
+import {
+  beatKind,
+  evaluateAttribution,
+  feedbackMessage,
+  isWrongHand,
+  runAttribution,
+  wrongKeyMessage,
+} from "../js/feedback.js";
 import { MIN_ATTRIBUTION_CONFIDENCE } from "../js/config.js";
 import { ATTRIBUTION_IMPLEMENTED, attributeKeystroke } from "../js/core/fingerAttribution.js";
 import { FrameBuffer } from "../js/frameBuffer.js";
@@ -61,8 +68,12 @@ test("either thumb is correct for Space", () => {
 
 test("messages say right or wrong in words, not just color", () => {
   assert.equal(
+    feedbackMessage({ status: "wrong", used: "L_MIDDLE" }, ["L_INDEX"]),
+    "Wrong finger: used left middle, should be left index.",
+  );
+  assert.equal(
     feedbackMessage({ status: "wrong", used: "R_MIDDLE" }, ["L_INDEX"]),
-    "Wrong finger: used right middle, should be left index.",
+    "Wrong hand: used right middle, should be left index.",
   );
   assert.equal(feedbackMessage({ status: "correct", used: "L_INDEX" }, ["L_INDEX"]), "Correct finger: left index.");
   assert.equal(feedbackMessage({ status: "unavailable" }, ["L_INDEX"]), "Finger check unavailable.");
@@ -74,12 +85,23 @@ test("a typo is described as a wrong key, naming Space in words", () => {
   assert.equal(wrongKeyMessage("j", " "), 'Wrong key: you typed "j", the text needs Space.');
 });
 
-test("beat flash: green only for right key and right finger, red for either mistake, none when unsure", () => {
-  const typed = (correct) => ({ kind: "char", correct });
-  assert.equal(beatKind(typed(true), { status: "correct" }), "good");
-  assert.equal(beatKind(typed(true), { status: "wrong" }), "bad");
-  assert.equal(beatKind(typed(true), { status: "unavailable" }), null);
-  assert.equal(beatKind(typed(false), { status: "correct" }), "bad");
+test("wrong hand means the finger used is on the other hand from every expected finger", () => {
+  assert.equal(isWrongHand({ status: "wrong", used: "R_INDEX" }, ["L_INDEX"]), true);
+  assert.equal(isWrongHand({ status: "wrong", used: "L_MIDDLE" }, ["L_INDEX"]), false);
+  assert.equal(isWrongHand({ status: "correct", used: "L_INDEX" }, ["L_INDEX"]), false);
+  assert.equal(isWrongHand({ status: "unavailable", used: null }, ["L_INDEX"]), false);
+  // Space accepts either thumb, so no finger there is ever the "wrong hand".
+  assert.equal(isWrongHand({ status: "wrong", used: "R_INDEX" }, ["L_THUMB", "R_THUMB"]), false);
+});
+
+test("beat flash: green for right key and finger, orange for the other hand, red otherwise, none when unsure", () => {
+  // F expects the left index.
+  const typed = (correct) => ({ kind: "char", correct, expectedFingers: ["L_INDEX"] });
+  assert.equal(beatKind(typed(true), { status: "correct", used: "L_INDEX" }), "good");
+  assert.equal(beatKind(typed(true), { status: "wrong", used: "L_MIDDLE" }), "bad");
+  assert.equal(beatKind(typed(true), { status: "wrong", used: "R_INDEX" }), "warn");
+  assert.equal(beatKind(typed(true), { status: "unavailable", used: null }), null);
+  assert.equal(beatKind(typed(false), { status: "correct", used: "L_INDEX" }), "bad");
   assert.equal(beatKind(typed(false), null), "bad");
-  assert.equal(beatKind({ kind: "backspace", correct: null }, { status: "correct" }), null);
+  assert.equal(beatKind({ kind: "backspace", correct: null, expectedFingers: ["R_PINKY"] }, { status: "correct" }), null);
 });

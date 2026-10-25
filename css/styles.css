@@ -41,6 +41,7 @@
   --ok: #2f7a45;
   --beat-good: rgba(47, 122, 69, 0.45);   /* translucent edge glow, right key + right finger */
   --beat-bad: rgba(217, 48, 48, 0.45);    /* wrong key or wrong finger */
+  --beat-warn: rgba(232, 134, 12, 0.5);   /* right key, but pressed with the other hand */
   --ok-bg: #e4f3e2;
   --bad-bg: #ffe4e1;
   --warn-bg: #fff9c4;
@@ -75,6 +76,7 @@
   :root {
     --beat-good: rgba(110, 205, 135, 0.38);
     --beat-bad: rgba(255, 107, 107, 0.42);
+    --beat-warn: rgba(255, 170, 70, 0.45);
     --paper: #2c2e31;
     --card: #343639;
     --ink: #ebe6db;
@@ -238,9 +240,8 @@ main { padding: 0.5rem 1.25rem 5rem; max-width: 1200px; margin: 0 auto; }
   gap: 2rem;
   align-items: start;
 }
-.exercise-layout { grid-template-columns: minmax(0, 3fr) minmax(240px, 1.5fr); }
 @media (max-width: 800px) {
-  .two-column, .exercise-layout { grid-template-columns: 1fr; }
+  .two-column { grid-template-columns: 1fr; }
 }
 
 .panel {
@@ -435,6 +436,10 @@ kbd {
 }
 .stage canvas { position: absolute; inset: 0; height: 100%; }
 .stage.replay video { display: none; }
+/* "Hands facing me": only the picture turns around (upside down and mirrored,
+   like looking at your hands from across the table). The overlay draws its own
+   points turned the same way (overlay.js) so its labels stay readable. */
+.stage.flipped video { transform: scale(-1, -1); }
 .stage.replay canvas { position: static; }
 .stage-empty {
   position: absolute;
@@ -533,9 +538,28 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 .level-card strong { display: block; font-family: var(--font-marker); font-variation-settings: var(--marker-axes); font-weight: 700; font-size: 1.4rem; line-height: 1.2; background: none; color: inherit; }
 .level-card span { color: color-mix(in srgb, var(--postit-ink) 80%, transparent); }
 
-/* ---- Exercise ---- */
-.exercise-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.25rem; margin-bottom: 1.25rem; }
-.exercise-header h2 { margin-bottom: 0; }
+/* ---- Exercise: slim bar, text, one status line, then a big camera view ---- */
+.exercise-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.5rem; margin: 0.25rem 0 0.9rem; }
+.exercise-bar h2 { font-size: 1.35rem; margin: 0; }
+.exercise-bar .live-stats { margin: 0 0 0 auto; }
+button.compact { font-size: 0.95rem; padding: 0.2rem 0.9rem 0.25rem; box-shadow: var(--shadow-sm); }
+button.compact kbd { font-size: 0.8em; margin-left: 0.25rem; }
+.exercise-status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1.75rem; min-height: 2.4rem; margin: 0.75rem 0 1.1rem; }
+.exercise-status .next-finger, .exercise-status .feedback { margin: 0; }
+/* The camera view takes the rest of the screen: as wide as the remaining height
+   allows for the video's shape (--video-aspect is set by overlay.js). */
+.stage-slot-wide {
+  --stage-height: max(16rem, calc(100vh - 25rem));
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  transform: none;
+}
+.stage-slot-wide .stage {
+  width: min(calc(100vw - 4.5rem), calc(1200px - 4.5rem), calc(var(--stage-height) * var(--video-aspect, 1.7778)));
+}
+/* During an exercise the step list is just clutter. */
+body:has(#screen-exercise:not([hidden])) .steps { display: none; }
 .badge {
   display: inline-block;
   font-size: 0.95rem;
@@ -560,7 +584,7 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 .live-stats div { display: flex; flex-direction: row-reverse; align-items: baseline; gap: 0.4rem; }
 .live-stats dd {
   font-family: var(--font-marker); font-variation-settings: var(--marker-axes);
-  font-size: 2.4rem;
+  font-size: 1.9rem;
   line-height: 1;
   color: var(--pen-ink);
   font-variant-numeric: tabular-nums;
@@ -635,7 +659,6 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 }
 .next-finger {
   display: inline-block;
-  margin: 1.25rem 0 0.25rem;
   font-family: var(--font-marker); font-variation-settings: var(--marker-axes);
   font-weight: 700;
   font-size: 1.35rem;
@@ -649,18 +672,15 @@ progress::-moz-progress-bar { background: repeating-linear-gradient(-45deg, var(
 .feedback[data-status="unavailable"] { color: var(--ink-soft); }
 .feedback[data-status="wrong-key"] { color: var(--marker-ink); }
 .feedback[data-status="wrong-key"]::before { content: "\2260  "; }
-.key-hints { color: var(--pencil); }
 
 /* Focus mode, like monkeytype: while the typing area has focus, the chrome fades out of the way. */
 body:has(#typing-area:focus) .app-header,
-body:has(#typing-area:focus) .exercise-header,
-body:has(#typing-area:focus) .typing-column .button-row,
+body:has(#typing-area:focus) .exercise-bar,
 body:has(#typing-area:focus) .debug-toggle { opacity: 0.4; }
 body:has(#typing-area:focus) .app-header:hover,
-body:has(#typing-area:focus) .exercise-header:hover,
-body:has(#typing-area:focus) .typing-column .button-row:hover,
+body:has(#typing-area:focus) .exercise-bar:hover,
 body:has(#typing-area:focus) .debug-toggle:hover { opacity: 1; }
-.exercise-header, .typing-column .button-row, .debug-toggle { transition: opacity 200ms ease; }
+.exercise-bar, .debug-toggle { transition: opacity 200ms ease; }
 
 /* ---- Summary ---- */
 .headline {
@@ -853,6 +873,7 @@ tr:last-child td { border-bottom: 0; }
 }
 .beat-flash[data-beat="good"] { --beat-color: var(--beat-good); }
 .beat-flash[data-beat="bad"] { --beat-color: var(--beat-bad); }
+.beat-flash[data-beat="warn"] { --beat-color: var(--beat-warn); }
 
 /* Respect reduced motion: no transitions or animations anywhere. */
 @media (prefers-reduced-motion: reduce) {

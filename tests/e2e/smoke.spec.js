@@ -164,10 +164,10 @@ test("when the finger check returns results, feedback and finger stats appear", 
   // Right key and right finger: a green beat.
   await expect(page.locator("#beat-flash")).toHaveAttribute("data-beat", "good");
   await page.keyboard.type("ff j", { delay: 30 });
-  await expect(page.locator("#feedback-text")).toHaveText("Wrong finger: used left index, should be right index.");
+  // J pressed with the LEFT index: the right key, but the other hand, so an orange beat.
+  await expect(page.locator("#feedback-text")).toHaveText("Wrong hand: used left index, should be right index.");
   await expect(page.locator("#feedback-text")).toHaveAttribute("data-status", "wrong");
-  // Right key, wrong finger: a red beat.
-  await expect(page.locator("#beat-flash")).toHaveAttribute("data-beat", "bad");
+  await expect(page.locator("#beat-flash")).toHaveAttribute("data-beat", "warn");
 
   const target = await page.locator("#target-text").textContent();
   await page.keyboard.type(target.slice(5), { delay: 15 });

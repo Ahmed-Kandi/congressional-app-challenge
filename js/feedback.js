@@ -57,32 +57,37 @@ export function wrongKeyMessage(typedChar, targetChar) {
   return `Wrong key: you typed ${charName(typedChar)}, the text needs ${charName(targetChar)}.`;
 }
 
+/** True when the finger used is on the other hand from every finger the key expects. */
+export function isWrongHand(check, expected) {
+  if (check.status !== "wrong" || !check.used) return false;
+  return expected.every((finger) => finger[0] !== check.used[0]);
+}
+
 /** The sentence shown to the student. Never relies on color: it says right or wrong in words. */
 export function feedbackMessage(check, expected) {
   switch (check.status) {
     case "correct":
       return `Correct finger: ${fingerLabel(check.used)}.`;
-    case "wrong":
-      return `Wrong finger: used ${fingerLabel(check.used)}, should be ${describeFingers(expected)}.`;
+    case "wrong": {
+      const mistake = isWrongHand(check, expected) ? "Wrong hand" : "Wrong finger";
+      return `${mistake}: used ${fingerLabel(check.used)}, should be ${describeFingers(expected)}.`;
+    }
     default:
       return "Finger check unavailable.";
   }
 }
 
 /**
- * Show a finger check on screen.
- * @param {{textElement: HTMLElement, overlay: import('./overlay.js').Overlay}} targets
- */
-/**
  * Which beat flash a keystroke gets: "good" only when the key AND the finger
- * were right, "bad" for a wrong key or a wrong finger, and null when the
- * finger check is unsure, so a guess never flashes red at the student.
+ * were right, "warn" (orange) for the right key pressed with the other hand,
+ * "bad" for a wrong key or a wrong finger on the right hand, and null when the
+ * finger check is unsure, so a guess never flashes at the student.
  */
 export function beatKind(keystroke, check) {
   if (keystroke.kind !== "char") return null;
   if (!keystroke.correct) return "bad";
   if (check?.status === "correct") return "good";
-  if (check?.status === "wrong") return "bad";
+  if (check?.status === "wrong") return isWrongHand(check, keystroke.expectedFingers) ? "warn" : "bad";
   return null;
 }
 
@@ -93,9 +98,22 @@ export function showWrongKey({ textElement, overlay }, typedChar, targetChar) {
   overlay.clearFlash();
 }
 
+/**
+ * Show a finger check on screen. A wrong finger gets a cross on the finger
+ * used and a check on the one that should have pressed the key.
+ * @param {{textElement: HTMLElement, overlay: import('./overlay.js').Overlay}} targets
+ */
 export function showFingerCheck({ textElement, overlay }, check, expected) {
   textElement.textContent = feedbackMessage(check, expected);
   textElement.dataset.status = check.status;
-  if (check.status === "unavailable") overlay.clearFlash();
-  else overlay.flash(check.used, check.status === "correct");
+  if (check.status === "unavailable") {
+    overlay.clearFlash();
+  } else if (check.status === "correct") {
+    overlay.flash(check.used, true);
+  } else {
+    overlay.flash(check.used, false, {
+      shouldUse: expected.length === 1 ? expected[0] : null,
+      wrongHand: isWrongHand(check, expected),
+    });
+  }
 }

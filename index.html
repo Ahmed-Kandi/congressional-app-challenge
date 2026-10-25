@@ -57,6 +57,7 @@
             <label><input type="radio" name="camera-facing" value="behind"> Behind the keyboard, looking at me</label>
           </fieldset>
           <label class="checkbox-label"><input type="checkbox" id="mirrored-toggle"> Image is mirrored (swap left and right)</label>
+          <label class="checkbox-label"><input type="checkbox" id="flip-toggle"> Show my hands facing me (turn the picture around, like a view from across the table)</label>
           <p class="hint">Look at the <strong>L</strong> and <strong>R</strong> labels on your wrists in the video. If they are on the wrong hands, change the setting above.</p>
 
           <ul class="indicators" aria-label="Tracking status">
@@ -132,31 +133,27 @@
 
     <!-- ===== Screen 4: Exercise ===== -->
     <section class="screen" id="screen-exercise" data-screen="exercise" aria-labelledby="exercise-title" hidden>
-      <div class="exercise-header">
+      <!-- One slim bar, the text, one status line, then the camera gets the rest of the screen. -->
+      <div class="exercise-bar">
         <h2 id="exercise-title" tabindex="-1">Exercise</h2>
         <span class="badge" id="attribution-badge" hidden>Finger check not built yet</span>
         <span class="badge badge-replay" id="replay-badge" hidden>Replaying a recording</span>
+        <dl class="live-stats">
+          <div><dt>WPM</dt><dd id="live-wpm">0</dd></div>
+          <div><dt>Accuracy</dt><dd id="live-accuracy">100%</dd></div>
+          <div><dt>Typed</dt><dd id="live-typed">0</dd></div>
+        </dl>
+        <button type="button" class="secondary compact" id="exercise-quit">Stop <kbd>Esc</kbd></button>
       </div>
-      <div class="two-column exercise-layout">
-        <div class="typing-column">
-          <dl class="live-stats">
-            <div><dt>WPM</dt><dd id="live-wpm">0</dd></div>
-            <div><dt>Accuracy</dt><dd id="live-accuracy">100%</dd></div>
-            <div><dt>Typed</dt><dd id="live-typed">0</dd></div>
-          </dl>
-          <div class="typing-area" id="typing-area" tabindex="0" role="textbox" aria-readonly="true"
-               aria-label="Typing area. Type the text shown." aria-describedby="next-finger">
-            <p class="target-text" id="target-text"></p>
-          </div>
-          <p class="next-finger" id="next-finger">Next: --</p>
-          <p class="feedback" id="feedback-text" aria-live="polite">Start typing when ready.</p>
-          <p class="hint key-hints">Press <kbd>Esc</kbd> to stop. <kbd>Backspace</kbd> fixes a mistake, but the mistake still counts.</p>
-          <div class="button-row">
-            <button type="button" class="secondary" id="exercise-quit">Stop and choose another</button>
-          </div>
-        </div>
-        <div class="stage-slot" id="exercise-stage-slot"></div>
+      <div class="typing-area" id="typing-area" tabindex="0" role="textbox" aria-readonly="true"
+           aria-label="Typing area. Type the text shown." aria-describedby="next-finger">
+        <p class="target-text" id="target-text"></p>
       </div>
+      <div class="exercise-status">
+        <p class="next-finger" id="next-finger">Next: --</p>
+        <p class="feedback" id="feedback-text" aria-live="polite">Start typing when ready.</p>
+      </div>
+      <div class="stage-slot stage-slot-wide" id="exercise-stage-slot"></div>
     </section>
 
     <!-- ===== Screen 5: Summary ===== -->
