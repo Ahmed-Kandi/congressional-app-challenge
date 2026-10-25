@@ -1,6 +1,7 @@
 // Browser smoke test. Runs in Chromium with a fake camera (a test pattern, no hands),
 // so nothing here depends on hand detection.
 import { test, expect } from "@playwright/test";
+import { ATTRIBUTION_IMPLEMENTED } from "../../js/core/fingerAttribution.js";
 import { buildRecording, serializeRecording } from "../../js/debug/recorder.js";
 import { GRID_CORNERS } from "../../js/keyboardGrid.js";
 import { fingertipLocation } from "../../js/landmarks.js";
@@ -67,10 +68,15 @@ test("typing the first 10 characters of a Level 1 drill updates the display", as
   await expect(page.locator("#live-typed")).toHaveText(`10 / ${target.length}`);
   await expect(page.locator("#live-wpm")).not.toHaveText("0");
   await expect(page.locator("#live-accuracy")).toHaveText("100%");
-  // The team's function is still the stub, so the badge shows and checks are neutral.
-  await expect(page.locator("#attribution-badge")).toBeVisible();
-  await expect(page.locator("#attribution-badge")).toHaveText("Finger check not built yet");
+  // The badge shows only while the team's function is not built yet.
+  if (ATTRIBUTION_IMPLEMENTED) {
+    await expect(page.locator("#attribution-badge")).toBeHidden();
+  } else {
+    await expect(page.locator("#attribution-badge")).toBeVisible();
+    await expect(page.locator("#attribution-badge")).toHaveText("Finger check not built yet");
+  }
   await expect(page.locator("#replay-badge")).toBeHidden();
+  // No camera and no calibration here, so every check is neutral either way.
   await expect(page.locator("#feedback-text")).toHaveText("Finger check unavailable.");
   // The page must not have scrolled from the space bar.
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
