@@ -71,14 +71,26 @@ Any other webcam works the same way: pick it from the list.
 - Use even lighting. Avoid a bright window behind your hands.
 - The Continue button unlocks when both hands have been visible for one second.
 
-## Deploy to GitHub Pages
+## Deploy: hightype.us on GitHub Pages
 
-1. Create a GitHub repository and push this folder to it (the team does this; nothing has been pushed yet).
-2. On GitHub, open **Settings > Pages**.
-3. Under **Build and deployment**, choose **Deploy from a branch**, branch `main`, folder `/ (root)`, and save.
-4. After a minute the app is live at `https://<your-username>.github.io/<repo-name>/`.
+HighType is served by GitHub Pages at **https://hightype.us**. There is no build step: Pages serves this folder as it is. The `CNAME` file in the repository root tells GitHub Pages which domain to answer for.
 
-There is no build step. Every path in the app is relative, so it works under the `/<repo-name>/` subpath (an automated test checks this). GitHub Pages uses `https://`, so the camera is allowed.
+**GitHub** (repository **Settings > Pages**):
+1. The repository must be public, or the account needs GitHub Pro (free with the GitHub Student Developer Pack).
+2. **Build and deployment:** Deploy from a branch, branch `main`, folder `/ (root)`.
+3. **Custom domain:** `hightype.us` (already set by the `CNAME` file).
+4. When the DNS check passes, tick **Enforce HTTPS**. The camera only works on `https://`.
+
+**Cloudflare** (hightype.us > DNS > Records), both with Proxy status **DNS only** (grey cloud):
+
+| Type | Name | Target |
+|---|---|---|
+| CNAME | `@` | `ahmed-kandi.github.io` |
+| CNAME | `www` | `ahmed-kandi.github.io` |
+
+GitHub redirects `www.hightype.us` to `hightype.us`. Turn on Cloudflare's proxy (orange cloud) only after HTTPS works, with **SSL/TLS** set to **Full**; "Flexible" causes a redirect loop.
+
+Every path in the app is relative, so it also works under a `/<repo-name>/` subpath (an automated test checks this).
 
 ## Privacy
 
