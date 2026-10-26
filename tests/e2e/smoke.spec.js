@@ -1,6 +1,7 @@
 // Browser smoke test. Runs in Chromium with a fake camera (a test pattern, no hands),
 // so nothing here depends on hand detection.
 import { test, expect } from "@playwright/test";
+import { computeCalibration } from "../../js/calibration.js";
 import { buildRecording, serializeRecording } from "../../js/debug/recorder.js";
 import { GRID_CORNERS } from "../../js/keyboardGrid.js";
 import { generateSynthetic, syntheticCornerTouches } from "../synthetic.js";
@@ -94,7 +95,9 @@ test("replaying a recording drives the exercise and traces through the live code
       { finger: "L_PINKY", t: 2500 },
     ],
   });
-  const recording = buildRecording({ frames, keyEvents, meta: { note: "e2e synthetic" } });
+  // Real recordings carry the calibration that was active; the replay uses it.
+  const { calibration } = computeCalibration(generateSynthetic({ durationMs: 1000, seed: 99 }).frames, "e2e");
+  const recording = buildRecording({ frames, keyEvents, meta: { note: "e2e synthetic", calibration } });
 
   await page.goto("/index.html?skipSetup=1");
   await page.locator("#debug-toggle").click();
@@ -285,14 +288,18 @@ test("keyboard map can be placed by dragging the discs onto the camera picture",
     const height = video.videoHeight * scale;
     return { left: stage.left + (stage.width - width) / 2, top: stage.top + (stage.height - height) / 2, width, height };
   });
+  // "Show my hands facing me" is on by default, so the picture on screen is
+  // turned 180 degrees: a key at camera-image point (x, y) is SHOWN at (1-x, 1-y).
+  // Drop each disc where its key is shown, as a student would.
+  expect(await page.locator("#stage").evaluate((stage) => stage.classList.contains("flipped"))).toBe(true);
   const touches = syntheticCornerTouches();
   for (const { code } of GRID_CORNERS) {
-    const point = touches[code];
+    const shown = { x: 1 - touches[code].x, y: 1 - touches[code].y };
     const disc = page.locator(`#grid-disc-tray [data-grid-code="${code}"]`);
     const box = await disc.boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
-    await page.mouse.move(image.left + point.x * image.width, image.top + point.y * image.height, { steps: 8 });
+    await page.mouse.move(image.left + shown.x * image.width, image.top + shown.y * image.height, { steps: 8 });
     await page.mouse.up();
   }
   await expect(page.locator("#grid-steps li.done")).toHaveCount(4);
@@ -302,5 +309,12 @@ test("keyboard map can be placed by dragging the discs onto the camera picture",
   await expect(page.locator("#screen-dashboard")).toBeVisible();
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("typingFormCoach.calibration") ?? "null"));
   expect(saved?.keyboardGrid?.homography).toHaveLength(9);
+  // The map stores the keys' positions in the CAMERA image, not where they were shown.
+  for (const { code } of GRID_CORNERS) {
+    expect(saved.keyboardGrid.touches[code].x).toBeCloseTo(touches[code].x, 2);
+    expect(saved.keyboardGrid.touches[code].y).toBeCloseTo(touches[code].y, 2);
+  }
+  // And the calibration remembers the left/right settings it was made with.
+  expect(saved.sides).toEqual({ mirrored: false, cameraFacing: "above", rotated: false });
   expect(errors).toEqual([]);
 });

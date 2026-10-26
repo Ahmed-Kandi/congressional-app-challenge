@@ -19,6 +19,9 @@ export const DEFAULT_SETTINGS = {
   mirrored: false,
   cameraFacing: "above", // "above" (above keyboard looking down) or "behind" (behind keyboard looking at user)
   flipView: true, // Display only: turn the picture around so the hands face the typist.
+  // The camera itself is upside down ("Rotate view 180°" in Setup). Unlike
+  // flipView this changes which hand is "L", so it is saved and stays put.
+  rotated: false,
 };
 
 // Find localStorage without letting a SecurityError escape.

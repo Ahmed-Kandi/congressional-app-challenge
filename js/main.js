@@ -37,6 +37,7 @@ import { createTraceStore, describeSnapshot, drawTraces, renderLegend } from "./
 import { describeFingers, expectedFingersForChar, needsShift } from "./fingerMap.js";
 import { FrameBuffer } from "./frameBuffer.js";
 import { HandTracker } from "./handTracker.js?v=rotation-calibration-1";
+import { calibrationMatchesSides, sideSettingsOf } from "./handSides.js?v=rotation-calibration-1";
 import { startKeyboardCapture } from "./keyboard.js";
 import { Overlay } from "./overlay.js?v=friend-logic-merge-1";
 import { createPipeline } from "./pipeline.js";
@@ -221,7 +222,6 @@ const state = {
   trackerReady: false,
   bothHandsSince: null,
   setupStep: 1,
-  cameraViewRotated: false,
   setupHandsReady: false,
   session: null,
   exerciseActive: false,
@@ -656,7 +656,7 @@ async function startTracking() {
   }
   state.tracker = new HandTracker({
     video: ui.video,
-    getSettings: () => ({ ...state.settings, rotated: state.cameraViewRotated }),
+    getSettings: () => state.settings,
     onFrame: (frame) => pipeline.ingestFrame(frame, "live"),
   });
   try {
@@ -710,7 +710,7 @@ async function openDashboardCameraPreview() {
   ui.dashboardCameraPreview.disabled = true;
   ui.dashboardPreviewStatus.textContent = "Starting camera…";
   dashboardPreviewOverlay.setHandsVisible(false);
-  dashboardPreviewOverlay.setRotated(state.cameraViewRotated);
+  dashboardPreviewOverlay.setRotated(state.settings.rotated);
   dashboardPreviewOverlay.setFlipped(state.settings.flipView);
   dashboardPreviewOverlay.setKeyboardGrid(state.calibration?.keyboardGrid ?? null);
   const requestId = ++state.dashboardPreviewRequestId;
@@ -721,7 +721,7 @@ async function openDashboardCameraPreview() {
       return;
     }
     state.dashboardPreviewStream = stream;
-    ui.dashboardPreviewVideo.classList.toggle("is-rotated", state.cameraViewRotated);
+    ui.dashboardPreviewVideo.classList.toggle("is-rotated", state.settings.rotated);
     ui.dashboardPreviewVideo.classList.toggle("is-flipped", state.settings.flipView);
     ui.dashboardPreviewVideo.srcObject = stream;
     await ui.dashboardPreviewVideo.play().catch(() => {});
@@ -1518,17 +1518,16 @@ function resetCameraSetupWizard() {
   state.setupHandsReady = false;
   ui.setupKeyboardConfirmed.checked = false;
   ui.setupLabelsConfirmed.checked = false;
-  state.cameraViewRotated = false;
   updateCameraViewRotation();
   for (const radio of ui.facingRadios) radio.checked = false;
   goToSetupStep(DEVICE_IS_PHONE ? 2 : 1);
 }
 
 function updateCameraViewRotation() {
-  ui.stage.classList.toggle("is-rotated", state.cameraViewRotated);
-  overlay.setRotated(state.cameraViewRotated);
-  ui.setupRotateVideo.setAttribute("aria-pressed", String(state.cameraViewRotated));
-  ui.setupRotateVideo.textContent = state.cameraViewRotated ? "Reset view" : "Rotate view 180°";
+  ui.stage.classList.toggle("is-rotated", state.settings.rotated);
+  overlay.setRotated(state.settings.rotated);
+  ui.setupRotateVideo.setAttribute("aria-pressed", String(state.settings.rotated));
+  ui.setupRotateVideo.textContent = state.settings.rotated ? "Reset view" : "Rotate view 180°";
 }
 
 function updateSetupIndicators(frame) {
@@ -1555,9 +1554,11 @@ function updateSetupIndicators(frame) {
 function initSetupScreen() {
   applySettingsToControls();
   applyFlipView();
+  updateCameraViewRotation();
   ui.setupRotateVideo.addEventListener("click", () => {
-    state.cameraViewRotated = !state.cameraViewRotated;
+    updateSetting("rotated", !state.settings.rotated);
     updateCameraViewRotation();
+    noteIfCalibrationStale();
   });
   ui.flipToggle.addEventListener("change", () => {
     updateSetting("flipView", ui.flipToggle.checked);
@@ -1591,6 +1592,7 @@ function initSetupScreen() {
   ui.setupLabelsConfirmed.addEventListener("change", updateSetupWizardControls);
   ui.mirroredToggle.addEventListener("change", () => {
     updateSetting("mirrored", ui.mirroredToggle.checked);
+    noteIfCalibrationStale();
     ui.setupLabelsConfirmed.checked = false;
     updateSetupWizardControls();
   });
@@ -1598,6 +1600,7 @@ function initSetupScreen() {
     radio.addEventListener("change", () => {
       if (!radio.checked) return;
       updateSetting("cameraFacing", radio.value);
+      noteIfCalibrationStale();
       updateSetupWizardControls();
     });
   }
@@ -1635,8 +1638,31 @@ function showCalibrationStep(step) {
 
 function describeSavedCalibration() {
   if (!state.calibration) return "Ready when you are.";
+  if (!calibrationMatchesSides(state.calibration, state.settings)) {
+    return "The camera settings changed since the saved calibration, so left and right no longer match it. Please calibrate again.";
+  }
   const grid = state.calibration.keyboardGrid ? "with a keyboard map" : "without a keyboard map";
   return `A saved calibration exists (${grid}). Calibrate again, or skip to keep using it.`;
+}
+
+/**
+ * Is the picture on screen turned 180 degrees from the camera image? "Rotate
+ * view" and "hands facing me" each turn it once, so both together cancel out
+ * (the same rule as the .stage CSS and overlay.js).
+ */
+function displayTurned() {
+  return Boolean(state.settings.rotated) !== Boolean(state.settings.flipView);
+}
+
+/** The calibration, or null when it was made with different left/right settings. */
+function usableCalibration() {
+  return calibrationMatchesSides(state.calibration, state.settings) ? state.calibration : null;
+}
+
+/** After a left/right setting changes, say so if the saved calibration no longer fits. */
+function noteIfCalibrationStale() {
+  const stale = state.calibration && !calibrationMatchesSides(state.calibration, state.settings);
+  showMessage(ui.setupNotice, stale ? "Left and right changed, so the saved calibration no longer matches. You will calibrate again in the next steps." : "");
 }
 
 function gridDiscPosition(point) {
@@ -1647,8 +1673,8 @@ function gridDiscPosition(point) {
   const scale = Math.min(rect.width / videoWidth, rect.height / videoHeight);
   const imageWidth = videoWidth * scale;
   const imageHeight = videoHeight * scale;
-  const displayX = state.cameraViewRotated ? 1 - point.x : point.x;
-  const displayY = state.cameraViewRotated ? 1 - point.y : point.y;
+  const displayX = displayTurned() ? 1 - point.x : point.x;
+  const displayY = displayTurned() ? 1 - point.y : point.y;
   return {
     left: ((rect.width - imageWidth) / 2 + displayX * imageWidth) / rect.width * 100,
     top: ((rect.height - imageHeight) / 2 + displayY * imageHeight) / rect.height * 100,
@@ -1699,7 +1725,8 @@ function initCalibrateScreen() {
     // The home row is saved already; the keyboard map comes next. A new home
     // row calibration drops any old map, because the camera may have moved.
     onSuccess: (calibration) => {
-      state.calibration = calibration;
+      state.calibration = { ...calibration, sides: sideSettingsOf(state.settings) };
+      saveCalibration(state.calibration);
       startGridStep();
     },
   });
@@ -1764,7 +1791,7 @@ function initCalibrateScreen() {
       ui.gridStatus.textContent = "Drop each disc on the camera image, over the center of its matching key.";
       return;
     }
-    if (state.cameraViewRotated) {
+    if (displayTurned()) {
       point.x = 1 - point.x;
       point.y = 1 - point.y;
     }
@@ -1998,7 +2025,7 @@ function scheduleFingerCheck(session, keystroke, keyEvent) {
 }
 
 function runFingerCheck(session, keystroke, keyEvent) {
-  const { result, problem } = runAttribution(attributeKeystroke, keyEvent, frameBuffer, state.calibration);
+  const { result, problem } = runAttribution(attributeKeystroke, keyEvent, frameBuffer, usableCalibration());
   const check = evaluateAttribution(result, keystroke.expectedFingers);
   session.recordFingerCheck(keystroke.id, check);
   ui.debugLastAttribution.textContent = problem ?? (result ? `${result.finger} (${result.confidence.toFixed(2)})` : "null");

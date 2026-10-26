@@ -62,3 +62,20 @@ export function assignSides(detections, settings) {
 function toLabeled(hand, side) {
   return { side, landmarks: hand.landmarks, score: hand.score };
 }
+
+/** Just the settings that decide which hand is "L": saved with a calibration. */
+export function sideSettingsOf({ mirrored = false, cameraFacing = "above", rotated = false }) {
+  return { mirrored: Boolean(mirrored), cameraFacing, rotated: Boolean(rotated) };
+}
+
+/**
+ * Was this calibration measured with the same left/right settings as now?
+ * If not, its "left index" rest position belongs to the other hand, so it must
+ * not be used. Calibrations saved before sides were recorded are trusted.
+ */
+export function calibrationMatchesSides(calibration, settings) {
+  if (!calibration?.sides) return true;
+  const then = sideSettingsOf(calibration.sides);
+  const now = sideSettingsOf(settings);
+  return then.mirrored === now.mirrored && then.cameraFacing === now.cameraFacing && then.rotated === now.rotated;
+}

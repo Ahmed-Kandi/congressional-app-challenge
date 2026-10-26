@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assignSides, handCenterX, userLeftIsOnImageLeft } from "../js/handSides.js";
+import {
+  assignSides,
+  calibrationMatchesSides,
+  handCenterX,
+  sideSettingsOf,
+  userLeftIsOnImageLeft,
+} from "../js/handSides.js";
 
 // Averages of floats are not exact, so compare positions with a tolerance.
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} is not ${expected}`);
@@ -81,4 +87,37 @@ test("output keeps landmarks and score and drops extra fields", () => {
 test("more than two detections: only the first two are used", () => {
   const hands = assignSides([handAt(0.1), handAt(0.9), handAt(0.5)], { cameraFacing: "above", mirrored: false });
   assert.equal(hands.length, 2);
+});
+
+test("a camera rotated 180 degrees swaps which image side is the left hand", () => {
+  for (const cameraFacing of FACINGS) {
+    for (const mirrored of MIRRORED) {
+      const upright = userLeftIsOnImageLeft({ mirrored, cameraFacing, rotated: false });
+      assert.equal(userLeftIsOnImageLeft({ mirrored, cameraFacing, rotated: true }), !upright);
+    }
+  }
+});
+
+test("sideSettingsOf keeps only the settings that decide left and right", () => {
+  assert.deepEqual(sideSettingsOf({ mirrored: true, cameraFacing: "behind", rotated: true, flipView: true }), {
+    mirrored: true,
+    cameraFacing: "behind",
+    rotated: true,
+  });
+  // Settings saved before "rotated" existed count as not rotated.
+  assert.deepEqual(sideSettingsOf({ mirrored: false, cameraFacing: "above" }), { mirrored: false, cameraFacing: "above", rotated: false });
+});
+
+test("a calibration only matches the left/right settings it was measured with", () => {
+  const settings = { mirrored: false, cameraFacing: "above", rotated: false, flipView: true };
+  const calibration = { sides: sideSettingsOf(settings) };
+  assert.equal(calibrationMatchesSides(calibration, settings), true);
+  // The display-only flip does not change left and right.
+  assert.equal(calibrationMatchesSides(calibration, { ...settings, flipView: false }), true);
+  assert.equal(calibrationMatchesSides(calibration, { ...settings, rotated: true }), false);
+  assert.equal(calibrationMatchesSides(calibration, { ...settings, mirrored: true }), false);
+  assert.equal(calibrationMatchesSides(calibration, { ...settings, cameraFacing: "behind" }), false);
+  // Older calibrations (no sides recorded) and no calibration are not rejected.
+  assert.equal(calibrationMatchesSides({ baselines: {} }, { ...settings, rotated: true }), true);
+  assert.equal(calibrationMatchesSides(null, settings), true);
 });

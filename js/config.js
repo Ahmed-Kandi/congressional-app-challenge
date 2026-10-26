@@ -122,7 +122,9 @@ export const TRACE_HISTORY_LIMIT = 50;
 export const REPLAY_END_HOLD_MS = 500;
 // Safety cap on a recording (about 5 minutes at 60 fps) so memory stays sane.
 export const RECORDING_MAX_FRAMES = 18000;
-
-// Finger position can corroborate observed fingertip motion after mapping.
+export const HOME_LIMIT_HAND_SPANS = 0.25;
+//works because short distance is what we will be demoing, and it sits safely under 0.33, range of next key.
 export const ON_KEY_LIMIT_KEYS = 1.0;
+//a fingertip further than this from the pressed key (in key widths) is not on the key.
 export const CLEAR_WINNER_MARGIN_KEYS = 0.3;
+//the nearest fingertip has to be this much closer than the next one, otherwise it's too close to call.
