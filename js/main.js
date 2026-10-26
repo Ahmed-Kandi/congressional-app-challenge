@@ -55,6 +55,8 @@ const ui = {
   globalError: $("global-error"),
   trackingWarning: $("tracking-warning"),
   stage: $("stage"),
+  stageEmptyText: $("stage-empty-text"),
+  stageCameraOn: $("stage-camera-on"),
   video: $("camera-video"),
   overlayCanvas: $("overlay-canvas"),
   // landing
@@ -118,6 +120,7 @@ const ui = {
   // calibrate
   calibrateCountdown: $("calibrate-countdown"),
   calibrateStepTag: $("calibrate-step-tag"),
+  calibrateTitleText: $("calibrate-title-text"),
   calibrateProgress: $("calibrate-progress"),
   calibrateStatus: $("calibrate-status"),
   calibrateStart: $("calibrate-start"),
@@ -213,6 +216,17 @@ const ui = {
 const params = new URLSearchParams(location.search);
 // Testing only: jump straight into an exercise without the camera.
 const skipSetup = params.get("skipSetup") === "1";
+// The Debug button is for the team: shown with ?debug=1, and under automated
+// browser tests (navigator.webdriver), which drive replays through it.
+const debugAvailable = params.get("debug") === "1" || navigator.webdriver === true;
+// ?reset=1 starts over at Level 1 (for demos): clears lesson progress and
+// session history. The chosen camera and its settings are kept.
+if (params.get("reset") === "1") {
+  storage.remove(KEYS.exerciseProgress);
+  storage.remove(KEYS.history);
+  params.delete("reset");
+  window.history.replaceState(null, "", location.pathname + (params.size ? `?${params}` : "") + location.hash);
+}
 
 const state = {
   screen: null,
@@ -232,6 +246,7 @@ const state = {
   pendingFingerChecks: 0,
   fingerCheckWaiters: [],
   setupStarted: false,
+  cameraLost: false, // the camera stopped by itself; reconnect when it comes back
   dashboardSetupComplete: false,
   dashboardPreviewStream: null,
   dashboardPreviewRequestId: 0,
@@ -619,6 +634,7 @@ async function startCamera(deviceId) {
     const extra = kind === "unknown" ? ` (${error.message})` : "";
     showMessage(ui.setupError, CAMERA_ERROR_TEXT[kind] + extra);
     ui.setupStatus.textContent = "Camera is off.";
+    setStagePlaceholder(CAMERA_ERROR_TEXT[kind], "Try again");
     fillCameraPicker(ui.cameraPicker, await listCameras().catch(() => []), null);
     updateSetupWizardControls();
     return;
@@ -628,8 +644,11 @@ async function startCamera(deviceId) {
     return;
   }
   state.stream = stream;
+  state.cameraLost = false;
+  watchForCameraEnding(stream);
   ui.video.srcObject = state.stream;
   ui.stage.classList.add("has-video");
+  setStagePlaceholder("Camera is off.", "Turn on camera");
   await ui.video.play().catch(() => {});
   const activeId = deviceIdOf(state.stream);
   rememberCamera(activeId);
@@ -645,6 +664,47 @@ async function refreshCameraPicker() {
   const cameras = await listCameras().catch(() => []);
   fillCameraPicker(ui.cameraPicker, cameras, deviceIdOf(state.stream));
   updateSetupWizardControls();
+  // A camera that disconnected (Continuity Camera often does) comes back as a
+  // device change: reconnect on our own if a camera screen is showing.
+  if (state.cameraLost && !state.stream && STAGE_SLOTS[state.screen]) turnCameraOn();
+}
+
+/** The message and button shown in the camera area when there is no video. */
+function setStagePlaceholder(text, buttonText) {
+  ui.stageEmptyText.textContent = text;
+  ui.stageCameraOn.textContent = buttonText;
+}
+
+/**
+ * If the camera stops by itself (an iPhone locks, moves away or drops Wi-Fi),
+ * say so in the camera area and offer to reconnect, instead of a frozen picture.
+ */
+function watchForCameraEnding(stream) {
+  const [track] = stream.getVideoTracks();
+  track?.addEventListener("ended", () => {
+    if (state.stream !== stream) return; // replaced or closed on purpose
+    state.stream = null;
+    state.cameraLost = true;
+    ui.video.srcObject = null;
+    ui.stage.classList.remove("has-video");
+    ui.setupStatus.textContent = "Camera disconnected.";
+    setStagePlaceholder(
+      "The camera disconnected. If you're using an iPhone, wake it up and keep it near your Mac, then reconnect.",
+      "Reconnect camera",
+    );
+  });
+}
+
+/** Start (or restart) the camera and hand tracking from the camera area's button. */
+async function turnCameraOn() {
+  if (!cameraAllowedHere()) {
+    setStagePlaceholder(CAMERA_ERROR_TEXT.insecure, "Try again");
+    return;
+  }
+  state.setupStarted = true;
+  setStagePlaceholder("Starting camera…", "Turn on camera");
+  await startCamera(rememberedCamera());
+  if (state.stream && !state.tracker?.running) await startTracking();
 }
 
 // ---------- Hand tracking ----------
@@ -857,7 +917,7 @@ function initLandingScreen() {
     if (event.target === ui.dashboardCameraPreviewDialog) ui.dashboardCameraPreviewDialog.close();
   });
   const landingStage = document.querySelector(".landing-stage");
-  for (const button of [ui.landingNavStart, ui.landingFinalStart]) {
+  for (const button of [ui.landingNavStart, ui.landingFinalStart, $("about-start")]) {
     button.addEventListener("click", openDashboard);
   }
   for (const button of [ui.landingSkip, ...document.querySelectorAll(".hero-narrative-try")]) {
@@ -1633,6 +1693,7 @@ function showCalibrationStep(step) {
   ui.calibrateGridStep.hidden = step !== "grid";
   const setupChecks = DEVICE_IS_PHONE ? 4 : 5;
   ui.calibrateStepTag.textContent = `step ${setupChecks + (step === "home" ? 1 : 2)}`;
+  ui.calibrateTitleText.textContent = step === "home" ? "Calibrate your home row" : "Map your keyboard";
   updateCameraFlowProgress(setupChecks + (step === "home" ? 0 : 1), step === "home" ? "Calibrate hands" : "Map keyboard");
 }
 
@@ -2458,6 +2519,8 @@ pipeline.onFrame((frame) => {
 
 function start() {
   clearSavedCalibration();
+  ui.debugToggle.hidden = !debugAvailable;
+  ui.stageCameraOn.addEventListener("click", turnCameraOn);
   initLandingScreen();
   initTypingTestScreen();
   initSetupScreen();

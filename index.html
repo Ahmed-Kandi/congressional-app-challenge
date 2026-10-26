@@ -198,8 +198,57 @@
       </footer>
     </section>
 
-    <!-- ===== About page (intentionally blank for now) ===== -->
-    <section class="screen screen-about" id="screen-about" data-screen="about" aria-label="About page" hidden></section>
+    <!-- ===== About page ===== -->
+    <section class="screen screen-about" id="screen-about" data-screen="about" aria-labelledby="about-title" hidden>
+      <header class="about-hero">
+        <h1 id="about-title" tabindex="-1">About <span class="about-logo">high<span class="logo-circled logo-serif">type</span></span></h1>
+        <p class="about-lead">A typing coach that watches your hands through a camera and tells you, keystroke by keystroke, whether you used the right finger.</p>
+      </header>
+
+      <div class="about-grid">
+        <section class="panel about-card about-card--wide" aria-labelledby="about-why-title">
+          <h2 id="about-why-title">Why it exists</h2>
+          <p>Typing trainers check <em>which key</em> you pressed. They can't see <em>which finger</em> pressed it, so habits like hunt-and-peck or typing with two fingers go unnoticed, and those habits cap how fast and comfortably you can type. HighType watches the finger.</p>
+        </section>
+
+        <section class="panel about-card about-card--wide" aria-labelledby="about-how-title">
+          <h2 id="about-how-title">How it works</h2>
+          <ol class="about-steps">
+            <li><strong>See the hands.</strong> Any webcam, or an iPhone through Continuity Camera, looks down at the keyboard. Google's MediaPipe hand tracker finds 21 points on each hand about 50 times a second.</li>
+            <li><strong>Learn your setup.</strong> You rest your fingers on the home row, then place four markers on Q, P, Z and / so HighType knows where every key is in the picture, even at an angle.</li>
+            <li><strong>Check every key.</strong> On a home-row key, if every fingertip is still at home, the right finger pressed it. On any other key, the fingertip sitting on that key is the one that pressed it. When the picture is unclear, HighType says "unavailable" instead of guessing.</li>
+            <li><strong>Coach you.</strong> A green, orange or red pulse after each key, a check on the finger you should use, live speed and accuracy, and a per-finger report after every lesson.</li>
+          </ol>
+        </section>
+
+        <section class="panel about-card" aria-labelledby="about-who-title">
+          <h2 id="about-who-title">Who it's for</h2>
+          <p>Students learning to type, and anyone self-taught who wants to fix their habits without a teacher watching their hands.</p>
+        </section>
+
+        <section class="panel about-card" aria-labelledby="about-accuracy-title">
+          <h2 id="about-accuracy-title">How accurate is it?</h2>
+          <p>On our labeled test recording, which included wrong fingers on purpose, HighType checked <strong>85 of 94</strong> keystrokes and got <strong>every one right</strong>, catching all 16 wrong-finger presses it checked.</p>
+        </section>
+
+        <section class="panel about-card" aria-labelledby="about-privacy-title">
+          <h2 id="about-privacy-title">Private by design</h2>
+          <p>The video never leaves your computer. Hand tracking runs inside your browser, nothing is uploaded, and your progress is stored only in this browser.</p>
+        </section>
+
+        <section class="panel about-card" aria-labelledby="about-built-title">
+          <h2 id="about-built-title">Built with</h2>
+          <ul class="about-tags">
+            <li>JavaScript</li><li>HTML</li><li>CSS</li><li>MediaPipe Hand Landmarker</li><li>Node.js tests</li><li>Playwright</li>
+          </ul>
+          <p class="hint">MediaPipe by Google (Apache 2.0). Fonts: Shantell Sans and Monaspace Radon (SIL Open Font License).</p>
+        </section>
+      </div>
+
+      <div class="button-row about-actions">
+        <button type="button" class="primary" id="about-start">Open the dashboard</button>
+      </div>
+    </section>
 
     <!-- ===== Dashboard (empty until camera setup starts) ===== -->
     <section class="screen screen-dashboard" id="screen-dashboard" data-screen="dashboard" aria-labelledby="dashboard-title" hidden>
@@ -336,7 +385,7 @@
 
           <div class="setup-wizard" aria-labelledby="setup-step-heading">
             <div class="setup-wizard-progress">
-              <span id="setup-step-count" aria-live="polite">Step 1 of 5</span>
+              <span id="setup-step-count" class="visually-hidden" aria-live="polite">Step 1 of 5</span>
               <ol class="setup-step-dots" aria-label="Camera setup progress">
                 <li data-step-dot="1" aria-current="step">Camera</li>
                 <li data-step-dot="2">Keyboard</li>
@@ -459,7 +508,7 @@
           <span class="camera-flow-progress-ticks" aria-hidden="true"></span>
         </div>
       </div>
-      <h2 id="calibrate-title" tabindex="-1"><span class="step-tag" id="calibrate-step-tag">step 6</span> Calibrate your home row</h2>
+      <h2 id="calibrate-title" tabindex="-1"><span class="step-tag" id="calibrate-step-tag">step 6</span> <span id="calibrate-title-text">Calibrate your home row</span></h2>
       <div class="two-column">
         <div class="stage-slot" id="calibrate-stage-slot"></div>
         <div class="panel" id="calibrate-home-step">
@@ -482,7 +531,7 @@
             <button type="button" class="grid-map-disc" data-grid-code="KeyQ" aria-label="Drag Q marker to the keyboard">Q</button>
             <button type="button" class="grid-map-disc" data-grid-code="KeyP" aria-label="Drag P marker to the keyboard">P</button>
             <button type="button" class="grid-map-disc" data-grid-code="KeyZ" aria-label="Drag Z marker to the keyboard">Z</button>
-            <button type="button" class="grid-map-disc" data-grid-code="Slash" aria-label="Drag question-mark marker for the slash key to the keyboard">?</button>
+            <button type="button" class="grid-map-disc" data-grid-code="Slash" aria-label="Drag the slash marker to the slash key">/</button>
           </div>
           <p class="grid-prompt" id="grid-prompt" aria-live="assertive"></p>
           <ol class="grid-steps" id="grid-steps">
@@ -612,7 +661,10 @@
     <video id="camera-video" playsinline muted autoplay aria-label="Live camera view of your hands"></video>
     <canvas id="overlay-canvas" aria-hidden="true"></canvas>
     <div class="grid-disc-layer" id="grid-disc-layer" aria-label="Placed keyboard map discs"></div>
-    <p class="stage-empty" id="stage-empty">Camera is off.</p>
+    <div class="stage-empty" id="stage-empty">
+      <p id="stage-empty-text">Camera is off.</p>
+      <button type="button" class="secondary compact" id="stage-camera-on">Turn on camera</button>
+    </div>
   </div>
 
   <!-- ===== Debug panel (hidden by default) ===== -->

@@ -6,3 +6,4 @@ playwright/.cache/
 /recordings/
 *.recording.json
 .DS_Store
+/presentation/demo.mp4

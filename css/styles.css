@@ -181,7 +181,7 @@ body::after {
   background-size: var(--paper-margin-x) 24rem;
 }
 body:has(#screen-dashboard:not([hidden]))::after { background-image: none; }
-.paper-margin-foreground { position: absolute; z-index: 0; top: 0; bottom: 0; left: var(--paper-margin-x); width: 1px; background: rgba(255, 107, 107, 0.24); pointer-events: none; }
+.paper-margin-foreground { position: absolute; z-index: -1; top: 0; bottom: 0; left: var(--paper-margin-x); width: 1px; background: rgba(255, 107, 107, 0.24); pointer-events: none; }
 
 h1, h2, h3 { font-family: var(--font-marker); font-variation-settings: var(--marker-axes); font-weight: 700; line-height: 1.15; }
 h2 { font-size: clamp(1.75rem, 3.6vw, 2.35rem); font-weight: 800; margin: 0.75rem 0 1.25rem; }
@@ -328,7 +328,21 @@ body:has(#screen-typing-test:not([hidden])) .steps [data-step="typing-test"]::af
 }
 
 main { padding: 0.5rem 1.25rem 5rem; max-width: 1200px; margin: 0 auto; }
-.screen-about { min-height: calc(100vh - 4.5rem); }
+.screen-about { min-height: calc(100vh - 4.5rem); max-width: 60rem; margin: 0 auto; padding: 2.5rem 0 3rem; }
+.about-hero { margin-bottom: 1.75rem; }
+.about-hero h1 { font-size: clamp(2.2rem, 5vw, 3.4rem); margin: 0 0 0.6rem; }
+.about-logo { white-space: nowrap; }
+.about-lead { font-size: clamp(1.15rem, 2vw, 1.45rem); max-width: 44rem; margin: 0; color: var(--ink); }
+.about-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.4rem; }
+.about-card h2 { font-size: 1.45rem; margin: 0 0 0.6rem; }
+.about-card p { margin: 0 0 0.5rem; }
+.about-card--wide { grid-column: 1 / -1; }
+.about-steps { margin: 0; padding-left: 1.4rem; display: grid; gap: 0.6rem; }
+.about-steps li::marker { font-family: var(--font-marker); font-variation-settings: var(--marker-axes); font-weight: 700; color: var(--marker-ink); }
+.about-tags { list-style: none; display: flex; flex-wrap: wrap; gap: 0.45rem; padding: 0; margin: 0 0 0.75rem; }
+.about-tags li { padding: 0.1rem 0.65rem; border: 2px solid var(--ink); border-radius: var(--wobbly-sm); background: var(--postit); color: var(--postit-ink); font-size: 0.95rem; }
+.about-actions { margin-top: 1.75rem; }
+@media (max-width: 760px) { .about-grid { grid-template-columns: 1fr; } }
 .screen-dashboard {
   --dashboard-panel-inset: clamp(0.9rem, 2vw, 1.5rem);
   --dashboard-panel-padding: clamp(1.1rem, 2.5vw, 2rem);
@@ -1843,6 +1857,11 @@ kbd {
   font-size: 1.2rem;
 }
 .stage.has-video .stage-empty, .stage.replay .stage-empty { display: none; }
+.stage-empty { align-content: center; gap: 0.9rem; padding: 1.5rem; text-align: center; }
+.stage-empty p { margin: 0; max-width: 32rem; }
+.stage:not(.has-video):not(.replay) { min-height: 14rem; }
+/* The final build has one progress bar per camera step; the old "step N" tags repeated it. */
+#screen-setup .step-tag, #screen-calibrate .step-tag, #screen-typing-test .step-tag, #screen-choose .step-tag { display: none; }
 /* The stage lives off screen until a screen slot claims it. */
 body > .stage { display: none; }
 
