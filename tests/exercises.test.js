@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { HOME_ROW_CHARACTERS, LEVELS, getExerciseText, getLevel } from "../js/exercises.js";
+import { HOME_ROW_CHARACTERS, LEVELS, getExerciseText, getLevel, getTutorial, keysInExercise } from "../js/exercises.js";
 import { codeForChar } from "../js/fingerMap.js";
 
 const HOME_ROW_ONLY = /^[asdfghjkl; ]+$/;
@@ -61,4 +61,47 @@ test("getExerciseText wraps around past the end", () => {
   assert.equal(getExerciseText(2, items.length), items[0]);
   assert.equal(getExerciseText(2, items.length + 1), items[1]);
   assert.equal(getExerciseText(99, 0), null);
+});
+
+test("every Level 1 and 2 exercise has a tutorial with a title, intro and tip", () => {
+  for (const levelId of [1, 2]) {
+    const level = getLevel(levelId);
+    assert.equal(level.tutorials.length, level.items.length, `Level ${levelId}: one tutorial per exercise`);
+    level.tutorials.forEach((tutorial, i) => {
+      for (const field of ["title", "intro", "tip"]) {
+        assert.ok(typeof tutorial[field] === "string" && tutorial[field].length > 10, `Level ${levelId} exercise ${i + 1}: missing ${field}`);
+      }
+    });
+  }
+});
+
+test("Level 3 has no tutorial", () => {
+  assert.equal(getTutorial(3, 0), null);
+});
+
+test("keysInExercise lists each key once, in order, with Space last", () => {
+  assert.deepEqual(keysInExercise("fff jjj fj"), ["f", "j", "Space"]);
+  assert.deepEqual(keysInExercise("a; a;"), ["a", ";", "Space"]);
+  assert.deepEqual(keysInExercise("ab"), ["a", "b"]);
+});
+
+test("Level 1 tutorials introduce all ten home row keys, a few at a time", () => {
+  const introduced = [];
+  for (let i = 0; i < getLevel(1).items.length; i += 1) {
+    const tutorial = getTutorial(1, i);
+    assert.equal(tutorial.text, getExerciseText(1, i));
+    assert.ok(tutorial.newKeys.length <= 2, `exercise ${i + 1} introduces ${tutorial.newKeys.join(" ")}`);
+    introduced.push(...tutorial.newKeys);
+  }
+  assert.deepEqual([...introduced].sort(), [..."asdfghjkl;"].sort());
+  assert.deepEqual(getTutorial(1, 0).newKeys, ["f", "j"]);
+});
+
+test("Level 2 tutorials have no new keys: Level 1 already taught them all", () => {
+  for (let i = 0; i < getLevel(2).items.length; i += 1) assert.deepEqual(getTutorial(2, i).newKeys, []);
+});
+
+test("getTutorial wraps around like getExerciseText", () => {
+  assert.equal(getTutorial(1, 8).title, getTutorial(1, 0).title);
+  assert.equal(getTutorial(2, -1).index, 7);
 });

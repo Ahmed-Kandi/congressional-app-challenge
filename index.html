@@ -565,6 +565,45 @@
       <div id="history-choose"></div>
     </section>
 
+    <!-- ===== Tutorial before each Level 1 and 2 exercise ===== -->
+    <section class="screen screen-tutorial" id="screen-tutorial" data-screen="tutorial" aria-labelledby="tutorial-title" hidden>
+      <p class="tutorial-kicker" id="tutorial-kicker"></p>
+      <h2 id="tutorial-title" tabindex="-1">Tutorial</h2>
+      <p class="tutorial-intro" id="tutorial-intro"></p>
+      <p class="tutorial-preview">You'll type: <code id="tutorial-text"></code></p>
+      <div class="tutorial-layout">
+        <div class="tutorial-main">
+          <section class="panel tutorial-keys" aria-labelledby="tutorial-keys-title">
+            <h3 id="tutorial-keys-title"><span class="tutorial-step" aria-hidden="true">1</span> Meet the keys</h3>
+            <div class="tutorial-keyboard" id="tutorial-keyboard" aria-hidden="true"></div>
+            <ul class="tutorial-key-cards" id="tutorial-key-cards" aria-label="Keys in this exercise"></ul>
+          </section>
+          <section class="panel tutorial-try" aria-labelledby="tutorial-try-title">
+            <h3 id="tutorial-try-title"><span class="tutorial-step" aria-hidden="true">2</span> Try each key</h3>
+            <p class="tutorial-prompt" id="tutorial-prompt" aria-live="assertive"></p>
+            <ol class="tutorial-progress" id="tutorial-progress" aria-hidden="true"></ol>
+            <p class="status-line" id="tutorial-status" role="status"></p>
+          </section>
+        </div>
+        <aside class="tutorial-side">
+          <div class="postit tutorial-tip"><strong>Tip</strong><p id="tutorial-tip"></p></div>
+          <div class="panel tutorial-coach">
+            <h3>How you'll be coached</h3>
+            <ul>
+              <li><span class="coach-mark coach-next">Next</span> names the finger for the next key</li>
+              <li><span class="coach-mark coach-good" aria-hidden="true">✓</span> green pulse: right finger</li>
+              <li><span class="coach-mark coach-warn" aria-hidden="true">✗</span> orange: right key, other hand</li>
+              <li><span class="coach-mark coach-bad" aria-hidden="true">✗</span> red: wrong finger or wrong key</li>
+            </ul>
+          </div>
+          <div class="button-row tutorial-actions">
+            <button type="button" class="primary" id="tutorial-start" disabled>Start exercise</button>
+            <button type="button" class="secondary" id="tutorial-skip">Skip the walk-through</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
     <!-- ===== Screen 4: Exercise ===== -->
     <section class="screen screen-exercise" id="screen-exercise" data-screen="exercise" aria-labelledby="exercise-title" hidden>
       <div class="exercise-bar">

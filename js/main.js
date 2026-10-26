@@ -27,7 +27,7 @@ import {
 } from "./camera.js";
 import { ATTRIBUTION_IMPLEMENTED, attributeKeystroke } from "./core/fingerAttribution.js?v=friend-logic-merge-1";
 import { createCalibrationScreen, createKeyboardGridCapture, loadCalibration, pointInVideoFrame, saveCalibration } from "./calibration.js?v=keyboard-discs-1";
-import { LEVELS, getExerciseText } from "./exercises.js";
+import { LEVELS, getExerciseText, getTutorial } from "./exercises.js";
 import { beatKind, evaluateAttribution, runAttribution, showFingerCheck, showWrongKey } from "./feedback.js?v=friend-logic-merge-1";
 import { buildPrompts, createCollectionSession, describePrompt } from "./debug/dataCollection.js";
 import { createBeatFlash } from "./beatFlash.js";
@@ -41,6 +41,7 @@ import { calibrationMatchesSides, sideSettingsOf } from "./handSides.js?v=rotati
 import { startKeyboardCapture } from "./keyboard.js";
 import { Overlay } from "./overlay.js?v=friend-logic-merge-1";
 import { createPipeline } from "./pipeline.js";
+import { createTutorialScreen } from "./tutorial.js";
 import { TypingSession } from "./session.js?v=dashboard-finger-accuracy-1";
 import { formatPercent, historyEntry, renderDashboardFingerAccuracy, renderHistory, renderSummary } from "./summaryView.js?v=dashboard-finger-accuracy-1";
 import { KEYS, storage } from "./storage.js";
@@ -291,7 +292,7 @@ function renderScreen(name) {
     [$("landing-nav-how"), null],
     [ui.landingNavTest, name === "typing-test" ? "page" : null],
     [$("landing-nav-about"), name === "about" ? "page" : null],
-    [ui.landingNavStart, ["dashboard", "setup", "calibrate", "choose", "exercise", "summary", "collect"].includes(name) ? "page" : null],
+    [ui.landingNavStart, ["dashboard", "setup", "calibrate", "choose", "tutorial", "exercise", "summary", "collect"].includes(name) ? "page" : null],
   ];
   for (const [item, current] of navItems) {
     if (current) item.setAttribute("aria-current", current);
@@ -1953,6 +1954,26 @@ function renderLevelList(container = ui.levelList) {
   );
 }
 
+function initTutorialScreen() {
+  tutorialScreen = createTutorialScreen({
+    elements: {
+      kicker: $("tutorial-kicker"),
+      title: $("tutorial-title"),
+      intro: $("tutorial-intro"),
+      text: $("tutorial-text"),
+      tip: $("tutorial-tip"),
+      keyboard: $("tutorial-keyboard"),
+      keyCards: $("tutorial-key-cards"),
+      prompt: $("tutorial-prompt"),
+      progress: $("tutorial-progress"),
+      status: $("tutorial-status"),
+      startButton: $("tutorial-start"),
+    },
+  });
+  $("tutorial-start").addEventListener("click", () => tutorialScreen.start());
+  $("tutorial-skip").addEventListener("click", () => tutorialScreen.start());
+}
+
 function initChooseScreen() {
   screenEnterHandlers.choose = () => {
     renderLevelList();
@@ -1964,7 +1985,16 @@ function initChooseScreen() {
 
 // ---------- Exercise screen ----------
 
-function startExercise(levelId, exerciseIndex) {
+// Level 1 and 2 exercises open with a tutorial page first (exercises.js#getTutorial).
+let tutorialScreen = null;
+
+function startExercise(levelId, exerciseIndex, { skipTutorial = false } = {}) {
+  const tutorial = skipTutorial ? null : getTutorial(levelId, exerciseIndex);
+  if (tutorial) {
+    tutorialScreen.open(tutorial, () => startExercise(levelId, exerciseIndex, { skipTutorial: true }));
+    showScreen("tutorial");
+    return;
+  }
   const title = `${LEVELS.find((l) => l.id === levelId).title}, exercise ${exerciseIndex + 1}`;
   startExerciseWithText(getExerciseText(levelId, exerciseIndex), { levelId, exerciseIndex }, title);
 }
@@ -2161,7 +2191,7 @@ function initSummaryScreen() {
   ui.summaryAgain.addEventListener("click", () => {
     const { levelId, exerciseIndex } = state.lastSummary;
     if (levelId == null) showScreen("choose"); // a replay has no exercise to repeat
-    else startExercise(levelId, exerciseIndex);
+    else startExercise(levelId, exerciseIndex, { skipTutorial: true }); // a retry doesn't need the tutorial again
   });
   ui.summaryChoose.addEventListener("click", () => showScreen("choose"));
 }
@@ -2172,12 +2202,13 @@ function initKeyboard() {
   startKeyboardCapture({
     onKey: (keyEvent) => pipeline.ingestKey(keyEvent, "live"),
     // Calibration also uses Space, so stop it scrolling the page there too.
-    isExerciseActive: () => state.exerciseActive || state.screen === "calibrate" || (state.screen === "collect" && collection !== null),
+    isExerciseActive: () => state.exerciseActive || state.screen === "calibrate" || state.screen === "tutorial" || (state.screen === "collect" && collection !== null),
     typingArea: ui.typingArea,
   });
 }
 
 pipeline.onKey((keyEvent) => {
+  if (state.screen === "tutorial") tutorialScreen.handleKey(keyEvent);
   if (state.screen === "exercise" && state.exerciseActive) handleExerciseKey(keyEvent);
   // On the Calibrate screen the thumb on Space starts the capture.
   if (state.screen === "calibrate" && !ui.calibrateHomeStep.hidden && keyEvent.code === "Space" && !calibrationScreen.capturing) {
@@ -2526,6 +2557,7 @@ function start() {
   initSetupScreen();
   initCalibrateScreen();
   initChooseScreen();
+  initTutorialScreen();
   initExerciseScreen();
   initSummaryScreen();
   initKeyboard();
@@ -2538,7 +2570,7 @@ function start() {
   }, 1000);
 
   if (skipSetup) {
-    startExercise(1, 0);
+    startExercise(1, 0, { skipTutorial: true });
     return;
   }
 

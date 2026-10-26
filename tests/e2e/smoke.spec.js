@@ -318,3 +318,32 @@ test("keyboard map can be placed by dragging the discs onto the camera picture",
   expect(saved.sides).toEqual({ mirrored: false, cameraFacing: "above", rotated: false });
   expect(errors).toEqual([]);
 });
+
+test("a Level 1 exercise opens with a tutorial that walks through each key", async ({ page }) => {
+  const errors = watchConsole(page);
+  await page.goto("/index.html?skipSetup=1");
+  await page.locator("#exercise-quit").click();
+  await page.locator("#level-list .level-card").first().click();
+  await expect(page.locator("#screen-tutorial")).toBeVisible();
+  await expect(page.locator("#tutorial-title")).toHaveText("Anchor on F and J");
+  await expect(page.locator("#tutorial-key-cards li")).toHaveCount(3); // F, J and Space
+  await expect(page.locator("#tutorial-keyboard .is-new")).toHaveCount(2);
+  await expect(page.locator("#tutorial-start")).toBeDisabled();
+
+  // A wrong key is explained; the right keys move the walk-through on.
+  await expect(page.locator("#tutorial-prompt")).toContainText("left index");
+  await page.keyboard.press("d");
+  await expect(page.locator("#tutorial-status")).toContainText("Find F with your left index");
+  await page.keyboard.press("f");
+  await expect(page.locator("#tutorial-prompt")).toContainText("right index");
+  await page.keyboard.press("j");
+  await page.keyboard.press("Space");
+  await expect(page.locator("#tutorial-prompt")).toHaveText("You know every key in this exercise.");
+  await expect(page.locator("#tutorial-start")).toBeEnabled();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0); // Space didn't scroll the page
+
+  await page.locator("#tutorial-start").click();
+  await expect(page.locator("#screen-exercise")).toBeVisible();
+  await expect(page.locator("#exercise-title")).toContainText("Level 1");
+  expect(errors).toEqual([]);
+});
