@@ -3,29 +3,28 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light dark">
-  <title>Typing Form Coach</title>
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Hightype is a camera-powered typing coach that helps you build speed, accuracy, and better finger habits.">
+  <title>Hightype — Learn to type with the right fingers</title>
   <!-- Empty icon so the browser does not request /favicon.ico (a 404 on GitHub Pages). -->
   <link rel="icon" href="data:,">
   <!-- All paths are relative (no leading slash) so the app works under /repo-name/ on GitHub Pages. -->
   <!-- The handwritten fonts are served from fonts/ so the page only talks to the hosts the e2e test allows. -->
   <link rel="preload" href="fonts/shantell-sans-latin-full-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="fonts/monaspace-radon-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/styles.css?v=large-practice-camera-1">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
 
   <header class="app-header">
-    <h1 class="logo">Typing <span class="logo-circled">Form</span> Coach</h1>
-    <!-- Decorative: each screen's own heading already says which step it is. -->
-    <ol class="steps" aria-hidden="true">
-      <li data-step="setup">camera</li>
-      <li data-step="calibrate">home row</li>
-      <li data-step="choose">pick</li>
-      <li data-step="exercise">type</li>
-      <li data-step="summary">results</li>
-    </ol>
+    <a class="logo" href="./" aria-label="Hightype home">high<span class="logo-circled logo-serif">type</span></a>
+    <nav class="landing-nav" aria-label="Main navigation">
+      <a href="#how-it-works" id="landing-nav-how">How it works</a>
+      <a href="#screen-typing-test" id="landing-nav-test">Typing test</a>
+      <a href="#about" id="landing-nav-about">About</a>
+      <button type="button" class="nav-cta" id="landing-nav-start">Dashboard</button>
+    </nav>
   </header>
 
   <!-- Problems that affect every screen (insecure page, slow tracking). -->
@@ -33,60 +32,440 @@
   <div id="tracking-warning" class="message message-warning" role="status" hidden></div>
 
   <main id="main">
+    <!-- ===== Landing page ===== -->
+    <section class="screen screen-landing" id="screen-landing" data-screen="landing" aria-labelledby="landing-title">
+      <section class="landing-stage" id="top" aria-label="Hightype typing coach">
+        <span class="landing-top-shadow" aria-hidden="true"></span>
+        <span class="landing-edge-shadows" aria-hidden="true"></span>
+        <span class="landing-bottom-shadow" aria-hidden="true"></span>
+        <svg class="hero-card-art-library" aria-hidden="true" focusable="false">
+          <symbol id="hero-hand-back" viewBox="0 0 100 112">
+            <path class="hero-hand-outline" d="M30 104C27 100 26 95 24 89L10 59C7 52 10 46 15 44C20 42 24 46 27 52L32 63L23 23C22 17 25 12 30 11C36 10 39 14 40 20L46 53L43 14C42 8 46 4 52 4C58 4 61 8 61 14L62 52L63 20C63 14 67 11 72 12C78 13 80 18 79 24L76 57L80 35C81 29 85 26 90 28C95 30 96 35 94 41L85 76C84 82 86 89 83 96C81 102 76 105 69 105H39C35 105 32 105 30 104Z" />
+            <g class="hero-hand-highlight" aria-hidden="true">
+              <path class="hero-hand-finger hero-hand-finger--index" d="M28 22Q28 16 31 16Q35 16 36 22L42 56L31 62Z" />
+              <path class="hero-hand-finger hero-hand-finger--middle" d="M48 10Q48 8 52 8Q56 8 56 13L58 56L45 57L45 14Z" />
+              <path class="hero-hand-finger hero-hand-finger--ring" d="M67 19Q68 16 72 16Q76 17 75 23L72 59L60 57L61 20Z" />
+              <path class="hero-hand-finger hero-hand-finger--pinky" d="M85 35Q86 32 89 33Q92 34 91 39L82 68L72 62L79 37Z" />
+            </g>
+            <path class="hero-hand-separators" d="M42 55L46 65M59 56L58 67M74 58L69 68" />
+            <path class="hero-hand-nails" d="M27 20Q31 17 35 21M47 12Q52 9 57 12M66 21Q71 18 75 22M84 38Q88 36 91 39" />
+            <path class="hero-hand-outline-top" d="M30 104C27 100 26 95 24 89L10 59C7 52 10 46 15 44C20 42 24 46 27 52L32 63L23 23C22 17 25 12 30 11C36 10 39 14 40 20L46 53L43 14C42 8 46 4 52 4C58 4 61 8 61 14L62 52L63 20C63 14 67 11 72 12C78 13 80 18 79 24L76 57L80 35C81 29 85 26 90 28C95 30 96 35 94 41L85 76C84 82 86 89 83 96C81 102 76 105 69 105H39C35 105 32 105 30 104Z" />
+          </symbol>
+        </svg>
+        <aside class="hero-card-carousel" aria-label="Examples of Hightype feedback">
+          <div class="hero-card-track">
+            <div class="hero-card-set">
+              <article class="hero-card hero-card--finger" aria-label="Finger cue: Right index finger, J">
+                <div class="hero-finger-copy"><span>FINGER CUE</span><strong class="hero-finger-detail"><span class="hero-finger-name">Right index</span><kbd class="hero-keycap">J</kbd></strong></div>
+                <svg class="hero-finger-hand" viewBox="0 0 100 112" data-target="index" data-side="R" aria-hidden="true"><g class="hero-hand-art"><use href="#hero-hand-back" /></g><text class="hero-hand-side" x="50" y="86">R</text></svg>
+              </article>
+              <article class="hero-card hero-card--finger" aria-label="Finger cue: Left middle finger, D">
+                <div class="hero-finger-copy"><span>FINGER CUE</span><strong class="hero-finger-detail"><span class="hero-finger-name">Left middle</span><kbd class="hero-keycap">D</kbd></strong></div>
+                <svg class="hero-finger-hand" viewBox="0 0 100 112" data-target="middle" data-side="L" aria-hidden="true"><g class="hero-hand-art"><use href="#hero-hand-back" /></g><text class="hero-hand-side" x="50" y="86">L</text></svg>
+              </article>
+              <article class="hero-card"><span>PRACTICE PACE</span><strong>Steady rhythm</strong></article>
+              <article class="hero-card hero-card--drift" aria-label="Hand position cue: Left hand is drifting too far right">
+                <div class="hero-drift-topline"><span class="hero-drift-label">HAND POSITION</span><span class="hero-drift-symbol" aria-hidden="true">↔</span></div>
+                <strong class="hero-drift-message">Left hand is drifting too far right</strong>
+                <span class="hero-drift-correction">← SHIFT LEFT</span>
+              </article>
+              <article class="hero-card hero-card--finger" aria-label="Finger cue: Right ring finger, L">
+                <div class="hero-finger-copy"><span>FINGER CUE</span><strong class="hero-finger-detail"><span class="hero-finger-name">Right ring</span><kbd class="hero-keycap">L</kbd></strong></div>
+                <svg class="hero-finger-hand" viewBox="0 0 100 112" data-target="ring" data-side="R" aria-hidden="true"><g class="hero-hand-art"><use href="#hero-hand-back" /></g><text class="hero-hand-side" x="50" y="86">R</text></svg>
+              </article>
+              <article class="hero-card hero-card--underused" aria-label="Finger use cue: Left pinky is not being utilized enough">
+                <div class="hero-underused-copy"><span class="hero-underused-label">UNDERUSED FINGER</span><strong class="hero-underused-name">Left pinky</strong><span class="hero-underused-message">isn't being utilized enough</span></div>
+                <svg class="hero-finger-hand" viewBox="0 0 100 112" data-target="pinky" data-side="L" aria-hidden="true"><g class="hero-hand-art"><use href="#hero-hand-back" /></g><text class="hero-hand-side" x="50" y="86">L</text></svg>
+              </article>
+              <article class="hero-card hero-card--punctuation" aria-label="Practice memorizing punctuation keys">
+                <span class="hero-punctuation-label">PUNCTUATION PRACTICE</span>
+                <strong class="hero-punctuation-message">Memorize the punctuation keys</strong>
+                <div class="hero-punctuation-keys" aria-hidden="true"><kbd class="hero-keycap">,</kbd><kbd class="hero-keycap">.</kbd><kbd class="hero-keycap">;</kbd><kbd class="hero-keycap">'</kbd><kbd class="hero-keycap">/</kbd></div>
+              </article>
+              <article class="hero-card hero-card--numbers" aria-label="Practice the number keys">
+                <span class="hero-numbers-label">NUMBER KEY PRACTICE</span>
+                <strong class="hero-numbers-message">Practice the number keys</strong>
+                <div class="hero-number-keys" aria-hidden="true"><kbd class="hero-keycap">1</kbd><kbd class="hero-keycap">2</kbd><kbd class="hero-keycap">3</kbd><kbd class="hero-keycap">4</kbd><kbd class="hero-keycap">5</kbd><kbd class="hero-keycap">6</kbd><kbd class="hero-keycap">7</kbd><kbd class="hero-keycap">8</kbd><kbd class="hero-keycap">9</kbd><kbd class="hero-keycap">0</kbd></div>
+              </article>
+              <article class="hero-card"><span>NEXT STEP</span><strong>Repeat a pattern</strong></article>
+              <article class="hero-card hero-card--record" aria-label="New record, 128 words per minute in 30 seconds">
+                <div class="hero-record-copy">
+                  <span class="hero-record-label">New record!</span>
+                  <strong class="hero-record-score"><span class="hero-record-number">128</span><span class="hero-record-unit">WPM</span></strong>
+                  <span class="hero-record-duration">30 seconds</span>
+                </div>
+                <svg class="hero-record-graph" viewBox="0 0 104 62" aria-hidden="true">
+                  <path class="hero-record-graph-axis" d="M3 55H101" />
+                  <path class="hero-record-graph-line" d="M6 46 23 38 39 42 57 25 73 31 96 10" />
+                  <circle class="hero-record-graph-dot" cx="96" cy="10" r="3.5" />
+                </svg>
+              </article>
+              <article class="hero-card hero-card--finger" aria-label="Finger cue: Left index finger, F">
+                <div class="hero-finger-copy"><span>FINGER CUE</span><strong class="hero-finger-detail"><span class="hero-finger-name">Left index</span><kbd class="hero-keycap">F</kbd></strong></div>
+                <svg class="hero-finger-hand" viewBox="0 0 100 112" data-target="index" data-side="L" aria-hidden="true"><g class="hero-hand-art"><use href="#hero-hand-back" /></g><text class="hero-hand-side" x="50" y="86">L</text></svg>
+              </article>
+              <article class="hero-card hero-card--rest" aria-label="Resting position cue: Right index finger should rest on J">
+                <div class="hero-rest-copy"><span class="hero-rest-label">RESTING POSITION</span><strong class="hero-rest-finger">Right index</strong><span class="hero-rest-status">is off its home key</span><div class="hero-rest-target"><span>REST ON</span><kbd class="hero-keycap hero-rest-key">J</kbd></div></div>
+                <svg class="hero-finger-hand" viewBox="0 0 100 112" data-target="index" data-side="R" aria-hidden="true"><g class="hero-hand-art"><use href="#hero-hand-back" /></g><text class="hero-hand-side" x="50" y="86">R</text></svg>
+              </article>
+            </div>
+          </div>
+        </aside>
+        <div class="hero-heading-group">
+          <div class="landing-copy">
+            <h1 class="landing-wordmark" id="landing-title" tabindex="-1">high<span class="logo-circled logo-serif">type</span></h1>
+            <h2 class="typing-headline" id="speed-title">
+              <span class="typing-line"><span class="typing-reserve" aria-hidden="true">Type faster - with REAL feedback.</span><span class="typing-animation" aria-hidden="true"><span id="typing-copy"></span><span class="typing-caret"></span></span></span>
+              <span class="visually-hidden">Type faster - with REAL feedback.</span>
+            </h2>
+          </div>
+          <div class="scene-actions">
+            <a class="hero-primary hero-link" id="landing-learn-more" href="#landing-note"><span class="hero-button-label">Learn more<span class="hero-button-question" aria-hidden="true">?</span></span></a>
+            <button type="button" class="primary hero-primary" id="landing-skip"><span class="hero-button-label">Try it out<span class="hero-button-question" aria-hidden="true">?</span></span></button>
+          </div>
+        </div>
+        <a class="scroll-cue" href="#how-it-works"><span>Scroll to see how it works</span><span aria-hidden="true">↓</span></a>
+      </section>
+
+      <div class="landing-note" id="landing-note" aria-label="Why Hightype exists">
+        <span class="note-mark" aria-hidden="true">“</span>
+        <p>In today's digital world, typing goes hand in hand with productivity.</p>
+      </div>
+
+      <section class="landing-section landing-story-section landing-story-section--speed" id="how-it-works" aria-labelledby="story-title-01">
+        <h2 class="visually-hidden" id="story-title-01">Typing speed ranges from hunt-and-peck to over 120 words per minute.</h2>
+        <div class="typing-story-box typing-story-box--intro">
+          <div class="speed-story-layout">
+            <aside class="speed-story-context" aria-label="Typing and the digital divide">
+              <p>Many students grow up typing on phones and reach high school still typing with one or two fingers ("hunt and peck"). Then state tests, essays, college applications and job applications all happen on a keyboard. Slow typing is a quiet part of the digital divide: it costs time on every timed writing test.</p>
+            </aside>
+            <div class="speed-story-rows" aria-label="Three typing speeds racing on the same sentence">
+              <article class="speed-story-row speed-story-row--fast">
+                <p class="hero-story-copy speed-story-copy"><span class="hero-info-typed" data-speed-wpm="180" aria-hidden="true"></span><span class="hero-info-caret" aria-hidden="true"></span><span class="speed-story-wpm" aria-live="polite"></span></p>
+              </article>
+              <article class="speed-story-row speed-story-row--average">
+                <p class="hero-story-copy speed-story-copy"><span class="hero-info-typed" data-speed-wpm="60" aria-hidden="true"></span><span class="hero-info-caret" aria-hidden="true"></span><span class="speed-story-wpm" aria-live="polite"></span></p>
+              </article>
+              <article class="speed-story-row speed-story-row--hunt">
+                <p class="hero-story-copy speed-story-copy"><span class="hero-info-typed" data-speed-lps="3" aria-hidden="true"></span><span class="hero-info-caret" aria-hidden="true"></span><span class="speed-story-wpm" aria-live="polite"></span></p>
+              </article>
+            </div>
+          </div>
+          <span class="visually-hidden">... but our fingers don't all keep up at the same pace. Hightype is here to fix that.</span>
+        </div>
+      </section>
+      <section class="landing-section landing-story-section landing-story-section--right" id="how-it-works-2" aria-labelledby="story-title-02">
+        <div class="typing-story-box">
+          <div class="story-beat-heading-row">
+            <h2 class="story-beat-title" id="story-title-02">Unlike other typing trainers, <span class="story-inline-wordmark" aria-label="Hightype">high<span class="logo-circled logo-serif">type</span></span> <strong>ACTUALLY</strong> monitors and tracks finger placement to give personalized coaching.</h2>
+          </div>
+          <div class="story-process-cards" aria-label="How Hightype works">
+            <article class="story-process-card">
+              <span class="story-process-number">(1).</span>
+              <svg class="story-process-icon" viewBox="0 0 24 32" aria-hidden="true"><rect x="4.5" y="1.5" width="15" height="29" rx="3.2"/><rect x="7" y="5" width="10" height="19" rx="1.2"/><path d="M9.5 3.5h5M10.5 27.5h3"/><circle cx="16" cy="3.5" r=".7"/></svg>
+              <p>HighType uses your phone or webcam to track your fingers and keyboard.</p>
+            </article>
+            <article class="story-process-card">
+              <span class="story-process-number">(2).</span>
+              <svg class="story-process-icon" viewBox="0 0 32 24" aria-hidden="true"><rect x="1.5" y="3" width="29" height="18" rx="2.5"/><path d="M5 7h2m3 0h2m3 0h2m3 0h2m3 0h2M5 11h2m3 0h2m3 0h2m3 0h2m3 0h2M7 15h2m3 0h2m3 0h2m3 0h2M11 18h10"/></svg>
+              <p>Calibrated algorithms detect your finger movements and keys through the camera.</p>
+            </article>
+            <article class="story-process-card">
+              <span class="story-process-number">(3).</span>
+              <svg class="story-process-icon" viewBox="0 0 32 28" aria-hidden="true"><rect x="2" y="2" width="28" height="18" rx="2"/><path d="M12 20v4m8-4v4m-11 2h14"/><path d="M6 6h20v10H6z"/></svg>
+              <p>Hightype can provide more accurate training based on your typing habits.</p>
+            </article>
+          </div>
+          <article class="hero-story-line">
+            <span class="visually-hidden">Most typing trainers measure keystrokes and speed, but they can’t see which fingers you use or how your hands move.</span>
+            <p class="hero-story-copy">
+              <span class="hero-story-reserve" aria-hidden="true">Most typing trainers measure keystrokes and speed, but they can’t see which fingers you use or how your hands move.</span>
+              <span class="hero-story-live"><span class="hero-info-typed" aria-hidden="true"></span><span class="hero-info-caret" aria-hidden="true"></span></span>
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="landing-final" aria-labelledby="final-title">
+        <p class="section-kicker">Whenever you're ready.</p>
+        <h2 id="final-title">Ten fingers. One better way to type.</h2>
+        <button type="button" class="primary hero-primary" id="landing-final-start">Try it out <span aria-hidden="true">→</span></button>
+      </section>
+
+      <footer class="landing-footer">
+        <p><strong>hightype</strong> — built by two high school students for the 2026 Congressional App Challenge.</p>
+        <div><a href="#how-it-works">How it works</a><a href="README.md">Project details</a></div>
+      </footer>
+    </section>
+
+    <!-- ===== About page (intentionally blank for now) ===== -->
+    <section class="screen screen-about" id="screen-about" data-screen="about" aria-label="About page" hidden></section>
+
+    <!-- ===== Dashboard (empty until camera setup starts) ===== -->
+    <section class="screen screen-dashboard" id="screen-dashboard" data-screen="dashboard" aria-labelledby="dashboard-title" hidden>
+      <nav class="dashboard-submenu" aria-label="Dashboard sections">
+        <button type="button" data-dashboard-view="overview" aria-current="page">Overview</button>
+        <button type="button" data-dashboard-view="lessons">Lessons</button>
+      </nav>
+      <h1 id="dashboard-title" tabindex="-1">Dashboard</h1>
+      <section class="dashboard-view" id="dashboard-overview">
+      <section class="panel dashboard-start-panel" aria-labelledby="dashboard-start-title">
+        <div class="dashboard-start-heading">
+          <svg class="dashboard-camera-icon" viewBox="0 0 72 60" role="img" aria-label="Camera">
+            <path d="M8 17h12l5-8h22l5 8h12a4 4 0 0 1 4 4v29a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V21a4 4 0 0 1 4-4Z" />
+            <circle cx="36" cy="35" r="12" />
+            <circle class="dashboard-camera-flash" cx="57" cy="25" r="2" />
+          </svg>
+          <div class="dashboard-start-copy">
+            <h2 id="dashboard-start-title">Let's get you set up.</h2>
+            <p id="dashboard-start-description">Once HighType can see your keyboard, you'll be all set for personalized practice.</p>
+          </div>
+          <div class="dashboard-start-actions">
+            <button type="button" class="primary" id="dashboard-camera-preview" hidden>Preview camera</button>
+            <button type="button" class="secondary" id="dashboard-camera-start">Set up camera</button>
+          </div>
+        </div>
+        <ul class="dashboard-checks" aria-label="Setup status">
+          <li data-dashboard-check="hands">
+            <span class="dashboard-check-mark" aria-hidden="true">✓</span>
+            <span class="dashboard-check-copy"><strong>Hands calibrated</strong><small>Both hands detected</small></span>
+            <span class="dashboard-check-state">To do</span>
+          </li>
+          <li data-dashboard-check="labels">
+            <span class="dashboard-check-mark" aria-hidden="true">✓</span>
+            <span class="dashboard-check-copy"><strong>Hand labels</strong><small>Left and right confirmed</small></span>
+            <span class="dashboard-check-state">To do</span>
+          </li>
+          <li data-dashboard-check="keyboard">
+            <span class="dashboard-check-mark" aria-hidden="true">✓</span>
+            <span class="dashboard-check-copy"><strong>Keyboard in frame</strong><small>Full keyboard visible</small></span>
+            <span class="dashboard-check-state">To do</span>
+          </li>
+          <li data-dashboard-check="keys">
+            <span class="dashboard-check-mark" aria-hidden="true">✓</span>
+            <span class="dashboard-check-copy"><strong>Keys mapped</strong><small>Keyboard map saved</small></span>
+            <span class="dashboard-check-state">To do</span>
+          </li>
+        </ul>
+      </section>
+      <section class="panel dashboard-finger-accuracy" aria-labelledby="dashboard-finger-accuracy-title">
+        <header class="dashboard-finger-accuracy-heading">
+          <div>
+            <h2 id="dashboard-finger-accuracy-title">Finger accuracy</h2>
+            <p>See how consistently each finger reaches its keys.</p>
+          </div>
+        </header>
+        <div class="dashboard-finger-hands" id="dashboard-finger-accuracy"></div>
+        <p class="hint dashboard-finger-accuracy-note" id="dashboard-finger-accuracy-note" role="status"></p>
+      </section>
+      </section>
+      <section class="dashboard-view dashboard-lessons" id="dashboard-lessons-view" aria-labelledby="dashboard-lessons-title" hidden>
+        <h2 id="dashboard-lessons-title" tabindex="-1">Choose a lesson</h2>
+        <div class="level-list" id="dashboard-level-list"></div>
+      </section>
+      <dialog class="setup-info-panel dashboard-camera-preview" id="dashboard-camera-preview-dialog" aria-labelledby="dashboard-camera-preview-title">
+        <button type="button" class="setup-info-close" id="dashboard-camera-preview-close" aria-label="Close camera preview">×</button>
+        <h3 id="dashboard-camera-preview-title">Camera preview</h3>
+        <p class="dashboard-preview-map-note">Mapped key positions</p>
+        <div class="dashboard-preview-stage">
+          <video class="dashboard-preview-video" id="dashboard-preview-video" playsinline muted autoplay aria-label="Live camera preview"></video>
+          <canvas class="dashboard-preview-overlay" id="dashboard-preview-overlay" aria-hidden="true"></canvas>
+        </div>
+        <p class="status-line" id="dashboard-preview-status" role="status">Starting camera…</p>
+      </dialog>
+      <div class="dashboard-first-visit" id="dashboard-first-visit" aria-live="polite" hidden>
+        <div class="dashboard-welcome-copy" id="dashboard-welcome-copy">
+          <h2 id="dashboard-welcome-title">Welcome to <span class="dashboard-welcome-logo">high<span class="logo-circled logo-serif">type</span></span>!</h2>
+          <p>Since this is your first time, let's get your camera set up.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Baseline typing test ===== -->
+    <section class="screen screen-typing-test" id="screen-typing-test" data-screen="typing-test" aria-labelledby="typing-test-title" hidden>
+      <h2 id="typing-test-title" tabindex="-1"><span class="step-tag">step 3</span> Typing test</h2>
+      <p class="typing-test-intro">A passage from <cite>Alice’s Adventures in Wonderland</cite> by Lewis Carroll.</p>
+      <div class="typing-test-layout">
+        <aside class="panel typing-test-score">
+          <dl class="typing-test-stats">
+            <div><dt>WPM</dt><dd id="typing-test-wpm">0</dd></div>
+            <div><dt>Accuracy</dt><dd id="typing-test-accuracy">100%</dd></div>
+          </dl>
+          <p class="status-line" id="typing-test-status" role="status">Ready when you are.</p>
+        </aside>
+        <div class="panel typing-test-panel">
+          <p class="hint">Type the full passage over the faded letters. The test ends when you reach the end.</p>
+          <label class="field-label" for="typing-test-input">Start typing over the faded text</label>
+          <div class="typing-test-editor">
+            <p class="typing-test-passage" id="typing-test-passage"></p>
+            <textarea id="typing-test-input" class="typing-test-input" rows="4" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="typing-test-hint typing-test-passage"></textarea>
+          </div>
+          <span class="visually-hidden" id="typing-test-hint">Your words per minute updates every second, and accuracy updates as you type. The test ends after the complete passage.</span>
+          <div class="button-row">
+            <button type="button" class="primary" id="typing-test-start">Start test</button>
+            <button type="button" class="primary" id="typing-test-next" hidden>Continue</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ===== Screen 1: Setup ===== -->
     <section class="screen" id="screen-setup" data-screen="setup" aria-labelledby="setup-title" hidden>
+      <div class="camera-flow-progress-group">
+        <span class="camera-flow-progress-label" data-camera-flow-label>Camera setup · Step 1 of 7</span>
+        <div class="camera-flow-progress" data-camera-flow-progress role="progressbar" aria-label="Camera setup progress" aria-valuemin="0" aria-valuemax="7" aria-valuenow="0" aria-valuetext="Camera setup, step 1 of 7">
+          <span class="camera-flow-progress-fill"></span>
+          <span class="camera-flow-progress-ticks" aria-hidden="true"></span>
+        </div>
+      </div>
       <h2 id="setup-title" tabindex="-1"><span class="step-tag">step 1</span> Set up your camera</h2>
       <div class="two-column">
-        <div class="stage-slot" id="setup-stage-slot"></div>
-        <div class="panel">
+        <div class="panel setup-controls-panel" id="setup-controls-panel">
           <div id="setup-error" class="message message-error" role="alert" hidden></div>
           <div id="setup-notice" class="message message-info" role="status" hidden></div>
 
-          <label class="field-label" for="camera-picker">Camera</label>
-          <div class="picker-row">
-            <select id="camera-picker" disabled>
-              <option value="">Looking for cameras...</option>
-            </select>
-            <button type="button" class="secondary" id="camera-refresh">Refresh list</button>
+          <div class="setup-control-group setup-camera-group" id="setup-camera-group">
+            <label class="field-label" for="camera-picker">Camera</label>
+            <div class="picker-row">
+              <select id="camera-picker" disabled>
+                <option value="">Looking for cameras...</option>
+              </select>
+              <button type="button" class="secondary" id="camera-refresh" aria-label="Refresh camera list">Refresh</button>
+            </div>
           </div>
-          <p class="hint">Don't see your iPhone? Unlock it, put it near the Mac with Wi-Fi and Bluetooth on, then press Refresh list.</p>
 
-          <fieldset class="field-group">
-            <legend>Where is the camera?</legend>
-            <label><input type="radio" name="camera-facing" value="above" checked> Above the keyboard, looking down at my hands</label>
-            <label><input type="radio" name="camera-facing" value="behind"> Behind the keyboard, looking at me</label>
-          </fieldset>
-          <label class="checkbox-label"><input type="checkbox" id="mirrored-toggle"> Image is mirrored (swap left and right)</label>
-          <label class="checkbox-label"><input type="checkbox" id="flip-toggle"> Show my hands facing me (turn the picture around, like a view from across the table)</label>
-          <p class="hint">Look at the <strong>L</strong> and <strong>R</strong> labels on your wrists in the video. If they are on the wrong hands, change the setting above.</p>
+          <div class="setup-wizard" aria-labelledby="setup-step-heading">
+            <div class="setup-wizard-progress">
+              <span id="setup-step-count" aria-live="polite">Step 1 of 5</span>
+              <ol class="setup-step-dots" aria-label="Camera setup progress">
+                <li data-step-dot="1" aria-current="step">Camera</li>
+                <li data-step-dot="2">Keyboard</li>
+                <li data-step-dot="3">Angle</li>
+                <li data-step-dot="4">Hands</li>
+                <li data-step-dot="5">Labels</li>
+              </ol>
+            </div>
 
-          <ul class="indicators" aria-label="Tracking status">
-            <li id="indicator-left" data-on="false"><span class="indicator-icon" aria-hidden="true"></span> <span class="indicator-text">Left hand visible</span></li>
-            <li id="indicator-right" data-on="false"><span class="indicator-icon" aria-hidden="true"></span> <span class="indicator-text">Right hand visible</span></li>
-            <li>Detection speed: <span id="setup-fps">--</span> fps</li>
-          </ul>
-          <p class="tip" id="positioning-tip" aria-live="polite">Put both hands on the keyboard where the camera can see them.</p>
-          <p class="status-line" id="setup-status" role="status">Starting camera...</p>
+            <section class="setup-wizard-step" data-setup-step="1" aria-labelledby="setup-step-1-title">
+              <h3 id="setup-step-1-title">Is the right camera selected?</h3>
+              <p>Choose the camera that can be positioned to view your keyboard and hands.</p>
+              <p class="setup-platform-copy" data-platform-copy="mac" hidden><button type="button" class="setup-info-trigger setup-info-inline-trigger" aria-label="Since you are on a Mac, you can also use an iPhone as a camera. Open camera options for details." aria-controls="camera-options-info" aria-expanded="false">Since you are on a Mac, you can also use an iPhone as a camera.</button></p>
+              <p class="setup-platform-copy" data-platform-copy="computer" hidden>A webcam that you can position to see your keyboard is perfect. Otherwise, you can run HighType on your phone to use that camera.</p>
+            </section>
 
-          <div class="button-row">
-            <button type="button" class="primary" id="setup-continue" disabled>Continue</button>
-            <button type="button" class="secondary" id="setup-skip-camera">Practice without the camera</button>
+            <section class="setup-wizard-step" data-setup-step="2" aria-labelledby="setup-step-2-title" hidden>
+              <h3 id="setup-step-2-title">Is your keyboard entirely in frame?</h3>
+              <p>Check the camera view. Make sure the full keyboard—from the left edge to the right edge—is visible.</p>
+              <button type="button" class="setup-rotate-trigger" id="setup-rotate-video" aria-pressed="false">Rotate view 180°</button>
+              <label class="checkbox-label"><input type="checkbox" id="flip-toggle"> Show my hands facing me (turn the picture around)</label>
+              <label class="setup-confirmation"><input type="checkbox" id="keyboard-in-frame"> Yes, I can see the entire keyboard.</label>
+            </section>
+
+            <section class="setup-wizard-step" data-setup-step="3" aria-labelledby="setup-step-3-title" hidden>
+              <div class="setup-facing-group">
+                <fieldset class="field-group setup-angle-choice">
+                  <legend id="setup-step-3-title">Where is the camera relative to the keyboard?</legend>
+                  <label><input type="radio" name="camera-facing" value="above"> Above the keyboard, looking down at my hands</label>
+                  <label><input type="radio" name="camera-facing" value="behind"> Beyond the keyboard, tilted toward my hands</label>
+                </fieldset>
+                <button type="button" class="setup-info-trigger" aria-label="Camera placement examples" aria-controls="camera-placement-info" aria-expanded="false" title="Camera placement examples">ⓘ</button>
+              </div>
+            </section>
+
+            <section class="setup-wizard-step" data-setup-step="4" aria-labelledby="setup-step-4-title" hidden>
+              <h3 id="setup-step-4-title">Show your hands over the keyboard.</h3>
+              <p>Rest both hands in your normal typing position for one second. Check that the finger labels follow the matching fingertips.</p>
+            </section>
+
+            <section class="setup-wizard-step" data-setup-step="5" aria-labelledby="setup-step-5-title" hidden>
+              <h3 id="setup-step-5-title">Are left and right labeled correctly?</h3>
+              <p>Check the L and R wrist markers in the preview. If they are reversed, turn on “Image is mirrored.”</p>
+              <label class="checkbox-label setup-confirmation"><input type="checkbox" id="setup-labels-confirmed"> Yes, L and R match my hands.</label>
+              <label class="checkbox-label"><input type="checkbox" id="mirrored-toggle"> Image is mirrored (swap L/R)</label>
+            </section>
           </div>
-          <p class="hint" id="setup-continue-hint">Continue unlocks after both hands are visible for 1 second.</p>
+
+          <div class="button-row setup-action-bar" aria-label="Camera setup navigation">
+            <button type="button" class="secondary" id="setup-back" hidden>Back</button>
+            <button type="button" class="primary" id="setup-continue" disabled>Next</button>
+          </div>
+
+          <dialog class="setup-info-panel" id="camera-options-info" aria-labelledby="camera-options-title">
+            <button type="button" class="setup-info-close" aria-label="Close camera options">×</button>
+            <h3 id="camera-options-title">Choose a camera</h3>
+            <ul>
+              <li><strong>iPhone with a Mac:</strong> Continuity Camera works with iPhone XR or newer (iOS 16+) and a Mac on Ventura or newer. Sign in to the same Apple Account, keep Wi-Fi and Bluetooth on, mount the phone with its rear cameras pointed at your hands, then choose it in the list.</li>
+              <li><strong>Webcam:</strong> A built-in or USB webcam works on Mac, Windows, or Chromebook. Choose it from the list and allow camera access.</li>
+              <li><strong>Phone only:</strong> Open HighType on your phone and prop it up beside the keyboard with its camera aimed at your hands.</li>
+            </ul>
+          </dialog>
+
+          <dialog class="setup-info-panel setup-placement-panel" id="camera-placement-info" aria-labelledby="camera-placement-title">
+            <button type="button" class="setup-info-close" aria-label="Close camera placement examples">×</button>
+            <h3 id="camera-placement-title">Where to put the camera</h3>
+            <div class="setup-placement-options">
+              <figure>
+                <svg class="placement-diagram" viewBox="0 0 240 120" role="img" aria-labelledby="overhead-title overhead-desc">
+                  <title id="overhead-title">Camera above the keyboard</title>
+                  <desc id="overhead-desc">A camera above a keyboard points straight down at both hands.</desc>
+                  <rect x="82" y="8" width="76" height="24" rx="5" />
+                  <circle cx="120" cy="20" r="6" />
+                  <path d="M120 38v22m-7-8 7 8 7-8" />
+                  <rect x="24" y="68" width="192" height="40" rx="6" />
+                  <path d="M35 80h170M35 92h170M60 68v40m30-40v40m30-40v40m30-40v40m30-40v40" />
+                  <path d="M70 60c-5-10 0-17 5-12l5 8 4-14c2-6 7-4 7 1l-1 12 5-10c3-5 7-2 5 3l-2 11m62 1c5-10 0-17-5-12l-5 8-4-14c-2-6-7-4-7 1l1 12-5-10c-3-5-7-2-5 3l2 11" />
+                </svg>
+                <figcaption><strong>Best:</strong> above, looking down.</figcaption>
+              </figure>
+              <figure>
+                <svg class="placement-diagram" viewBox="0 0 240 120" role="img" aria-labelledby="side-title side-desc">
+                  <title id="side-title">Camera beyond the keyboard</title>
+                  <desc id="side-desc">A camera at the far side of the keyboard tilts down toward both hands.</desc>
+                  <path d="M22 94h196M55 94v-8h130v8" />
+                  <rect x="62" y="69" width="116" height="23" rx="4" />
+                  <path d="M74 77h92m-92 8h92m-70-8v8m24-8v8m24-8v8" />
+                  <path d="M181 48l-14 18m8-26 19 14-13 17-19-14z" />
+                  <circle cx="178" cy="53" r="4" />
+                  <path d="M156 67 122 78m38-12 8-1m-8 1 5-7" />
+                  <path d="M91 68c-3-8 1-12 5-8l4 6 3-10c2-4 6-2 5 2l-1 9 4-6c2-4 6-1 4 3l-2 5m16-1c3-8-1-12-5-8l-4 6-3-10c-2-4-6-2-5 2l1 9-4-6c-2-4-6-1-4 3l2 5" />
+                </svg>
+                <figcaption><strong>Also works:</strong> beyond the keyboard, tilted down.</figcaption>
+              </figure>
+            </div>
+            <p>Keep the whole keyboard and both hands in view. If the wrist labels appear on the wrong sides, turn on “Image is mirrored.”</p>
+          </dialog>
+        </div>
+        <div class="setup-stage-column">
+          <div class="stage-slot" id="setup-stage-slot"></div>
+          <div class="setup-live-status" id="setup-live-status" hidden>
+            <ul class="indicators" aria-label="Tracking status">
+              <li id="indicator-left" data-on="false"><span class="indicator-icon" aria-hidden="true"></span> <span class="indicator-text">Left hand visible</span></li>
+              <li id="indicator-right" data-on="false"><span class="indicator-icon" aria-hidden="true"></span> <span class="indicator-text">Right hand visible</span></li>
+              <li>Detection speed: <span id="setup-fps">--</span> fps</li>
+            </ul>
+            <p class="tip" id="positioning-tip" aria-live="polite">Put both hands on the keyboard where the camera can see them.</p>
+            <p class="status-line" id="setup-status" role="status">Starting camera...</p>
+          </div>
         </div>
       </div>
     </section>
 
     <!-- ===== Screen 2: Calibrate ===== -->
     <section class="screen" id="screen-calibrate" data-screen="calibrate" aria-labelledby="calibrate-title" hidden>
-      <h2 id="calibrate-title" tabindex="-1"><span class="step-tag">step 2</span> Calibrate your home row</h2>
+      <div class="camera-flow-progress-group">
+        <span class="camera-flow-progress-label" data-camera-flow-label>Camera setup · Step 6 of 7</span>
+        <div class="camera-flow-progress" data-camera-flow-progress role="progressbar" aria-label="Camera setup progress" aria-valuemin="0" aria-valuemax="7" aria-valuenow="5" aria-valuetext="Calibrate hands, step 6 of 7">
+          <span class="camera-flow-progress-fill"></span>
+          <span class="camera-flow-progress-ticks" aria-hidden="true"></span>
+        </div>
+      </div>
+      <h2 id="calibrate-title" tabindex="-1"><span class="step-tag" id="calibrate-step-tag">step 6</span> Calibrate your home row</h2>
       <div class="two-column">
         <div class="stage-slot" id="calibrate-stage-slot"></div>
         <div class="panel" id="calibrate-home-step">
           <ol class="instructions">
-            <li>Rest your left fingers on <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> <kbd>F</kbd> and your right fingers on <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd> <kbd>;</kbd>. Feel for the bumps on <kbd>F</kbd> and <kbd>J</kbd>.</li>
-            <li>Press <kbd>Space</kbd> with your thumb (or the Start button).</li>
-            <li>Hold still for 3 seconds.</li>
+            <li>Place both thumbs on the <kbd>Space</kbd> bar.</li>
+            <li>Rest your left fingers on <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> <kbd>F</kbd> and your right fingers on <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd> <kbd>;</kbd>. Press <kbd>Space</kbd> or Start, then hold still for 3 seconds.</li>
           </ol>
           <p class="countdown" id="calibrate-countdown" aria-live="assertive"></p>
           <progress id="calibrate-progress" max="1" value="0" aria-label="Calibration progress"></progress>
@@ -98,30 +477,36 @@
         </div>
         <div class="panel" id="calibrate-grid-step" hidden>
           <h3 id="grid-title" tabindex="-1">Map the keyboard</h3>
-          <p>Now show the camera where the keys are. Press each key below once with the finger named. Your other fingers can leave the home row.</p>
+          <p>Drag each coral disc to the center of its matching key in the camera view. You can move a disc again before finishing.</p>
+          <div class="grid-disc-tray" id="grid-disc-tray" role="group" aria-label="Key markers to drag onto the keyboard">
+            <button type="button" class="grid-map-disc" data-grid-code="KeyQ" aria-label="Drag Q marker to the keyboard">Q</button>
+            <button type="button" class="grid-map-disc" data-grid-code="KeyP" aria-label="Drag P marker to the keyboard">P</button>
+            <button type="button" class="grid-map-disc" data-grid-code="KeyZ" aria-label="Drag Z marker to the keyboard">Z</button>
+            <button type="button" class="grid-map-disc" data-grid-code="Slash" aria-label="Drag question-mark marker for the slash key to the keyboard">?</button>
+          </div>
           <p class="grid-prompt" id="grid-prompt" aria-live="assertive"></p>
           <ol class="grid-steps" id="grid-steps">
-            <li><span class="step-mark" aria-hidden="true"></span><kbd>Q</kbd> left index</li>
-            <li><span class="step-mark" aria-hidden="true"></span><kbd>P</kbd> right index</li>
-            <li><span class="step-mark" aria-hidden="true"></span><kbd>Z</kbd> left index</li>
-            <li><span class="step-mark" aria-hidden="true"></span><kbd>/</kbd> right index</li>
+            <li><span class="step-mark" aria-hidden="true"></span><kbd>Q</kbd> upper left</li>
+            <li><span class="step-mark" aria-hidden="true"></span><kbd>P</kbd> upper right</li>
+            <li><span class="step-mark" aria-hidden="true"></span><kbd>Z</kbd> lower left</li>
+            <li><span class="step-mark" aria-hidden="true"></span><kbd>/</kbd> lower right</li>
           </ol>
           <p class="status-line" id="grid-status" role="status"></p>
           <div class="button-row" id="grid-capture-buttons">
-            <button type="button" class="secondary" id="grid-restart">Start again from Q</button>
-            <button type="button" class="secondary" id="grid-skip">Skip keyboard map</button>
+            <button type="button" class="secondary" id="grid-restart">Clear all discs</button>
+            <button type="button" class="secondary" id="grid-skip">Skip and return to dashboard</button>
           </div>
           <div class="button-row" id="grid-review-buttons" hidden>
-            <button type="button" class="primary" id="grid-continue">Dots are on the keys, continue</button>
+            <button type="button" class="primary" id="grid-continue">Finish setup</button>
             <button type="button" class="secondary" id="grid-redo">Redo keyboard map</button>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ===== Screen 3: Choose exercise ===== -->
+    <!-- ===== Screen 4: Choose exercise ===== -->
     <section class="screen" id="screen-choose" data-screen="choose" aria-labelledby="choose-title" hidden>
-      <h2 id="choose-title" tabindex="-1"><span class="step-tag">step 3</span> Choose an exercise</h2>
+      <h2 id="choose-title" tabindex="-1"><span class="step-tag">step 4</span> Choose an exercise</h2>
       <div class="level-list" id="level-list"></div>
       <div class="button-row">
         <button type="button" class="secondary" id="choose-back-setup">Camera setup</button>
@@ -132,8 +517,7 @@
     </section>
 
     <!-- ===== Screen 4: Exercise ===== -->
-    <section class="screen" id="screen-exercise" data-screen="exercise" aria-labelledby="exercise-title" hidden>
-      <!-- One slim bar, the text, one status line, then the camera gets the rest of the screen. -->
+    <section class="screen screen-exercise" id="screen-exercise" data-screen="exercise" aria-labelledby="exercise-title" hidden>
       <div class="exercise-bar">
         <h2 id="exercise-title" tabindex="-1">Exercise</h2>
         <span class="badge" id="attribution-badge" hidden>Finger check not built yet</span>
@@ -152,6 +536,7 @@
       <div class="exercise-status">
         <p class="next-finger" id="next-finger">Next: --</p>
         <p class="feedback" id="feedback-text" aria-live="polite">Start typing when ready.</p>
+        <p class="status-line exercise-camera-status" id="exercise-camera-status" role="status" hidden></p>
       </div>
       <div class="stage-slot stage-slot-wide" id="exercise-stage-slot"></div>
     </section>
@@ -177,23 +562,20 @@
       <h3>Last 10 sessions</h3>
       <div id="history-summary"></div>
     </section>
-
-    <!-- ===== Debug screen: Data collection run ===== -->
-    <section class="screen" id="screen-collect" data-screen="collect" aria-labelledby="collect-title" hidden>
+    <section class="screen screen-collect" id="screen-collect" data-screen="collect" aria-labelledby="collect-title" hidden>
       <h2 id="collect-title" tabindex="-1"><span class="step-tag">debug</span> Data collection run</h2>
-      <div class="two-column">
+      <div class="two-column collect-layout">
         <div class="stage-slot" id="collect-stage-slot"></div>
         <div class="panel">
           <div id="collect-intro">
-            <p>The app asks for one key at a time and names the finger to use. It records the camera and writes down which finger it asked for, so the recording comes out already labeled.</p>
+            <p>The app asks for a key and a finger, then records your camera and keystrokes with labels for that finger.</p>
             <ul class="instructions">
-              <li>Press exactly the key shown, with exactly the finger shown, then go back to the home row.</li>
-              <li>About 1 in 5 prompts asks for a <strong>wrong finger on purpose</strong>. Do what it says: those are the mistakes your finger check must catch.</li>
-              <li>Pressed with the wrong finger by accident? Press <kbd>Backspace</kbd> and the last key is asked again.</li>
-              <li>About 100 prompts, roughly 5 minutes. Keep the camera still.</li>
+              <li>Press the key with the finger shown, then return to the home row.</li>
+              <li>Some prompts ask for a wrong finger on purpose so the recording includes mistakes.</li>
+              <li>If you slip, press <kbd>Backspace</kbd> to redo the last counted key.</li>
             </ul>
-            <p class="status-line" id="collect-calibration-note"></p>
-            <label class="field-label" for="collect-typist">Typist name (saved in the labels)</label>
+            <p class="status-line" id="collect-calibration-note" role="status"></p>
+            <label class="field-label" for="collect-typist">Typist name</label>
             <input type="text" id="collect-typist" autocomplete="off">
             <div class="button-row">
               <button type="button" class="primary" id="collect-start">Start</button>
@@ -213,21 +595,23 @@
           </div>
           <div id="collect-done" hidden>
             <p class="status-line" id="collect-result" role="status"></p>
-            <p>Move the file into the <code>recordings</code> folder of the project, then run <code>npm run evaluate -- recordings</code>. The labels are inside the file, so there is nothing else to write.</p>
+            <p>The downloaded recording includes the finger labels for evaluation.</p>
             <div class="button-row">
               <button type="button" class="primary" id="collect-again">Another run</button>
-              <button type="button" class="secondary" id="collect-done-back">Back</button>
+              <button type="button" class="secondary" id="collect-done-back">Back to dashboard</button>
             </div>
           </div>
         </div>
       </div>
     </section>
   </main>
+  <span class="paper-margin-foreground" aria-hidden="true"></span>
 
   <!-- The live camera view. Moved into whichever screen's stage slot is showing. -->
   <div class="stage" id="stage">
     <video id="camera-video" playsinline muted autoplay aria-label="Live camera view of your hands"></video>
     <canvas id="overlay-canvas" aria-hidden="true"></canvas>
+    <div class="grid-disc-layer" id="grid-disc-layer" aria-label="Placed keyboard map discs"></div>
     <p class="stage-empty" id="stage-empty">Camera is off.</p>
   </div>
 
@@ -269,8 +653,7 @@
     <div class="trace-legend" id="trace-legend"></div>
   </aside>
 
-  <script type="module" src="js/main.js"></script>
-  <!-- Full-screen beat flash after each keystroke (decoration; the feedback line says it in words). -->
   <div class="beat-flash" id="beat-flash" aria-hidden="true"></div>
+  <script type="module" src="js/main.js?v=large-practice-camera-1"></script>
 </body>
 </html>

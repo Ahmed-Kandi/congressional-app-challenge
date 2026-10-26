@@ -178,6 +178,7 @@ export function computeKeyboardGrid(touches, homeRowCalibration = null, createdA
     touches: Object.fromEntries(GRID_CORNERS.map(({ code }) => [code, { x: touches[code].x, y: touches[code].y }])),
     homography,
     homeRowErrorKeys: null,
+    homeRowWarning: null,
   };
 
   // Check the grid against the home row calibration: the fingers rested on
@@ -188,11 +189,8 @@ export function computeKeyboardGrid(touches, homeRowCalibration = null, createdA
     );
     grid.homeRowErrorKeys = errors.reduce((sum, e) => sum + e, 0) / errors.length;
     if (grid.homeRowErrorKeys > KEYBOARD_GRID_MAX_HOME_ROW_ERROR_KEYS) {
-      return {
-        ok: false,
-        reason: `The grid is ${grid.homeRowErrorKeys.toFixed(1)} keys away from where your fingers rested on the home row. ` +
-          "Make sure the camera did not move, and press each key with the finger shown.",
-      };
+      grid.homeRowWarning = `The home row estimate is ${grid.homeRowErrorKeys.toFixed(1)} keys away. ` +
+        "Check the dots against the real keys before continuing.";
     }
   }
   return { ok: true, grid };
@@ -208,7 +206,24 @@ export function imageToKeyboard(grid, point) {
   const inverse = invertHomography(grid.homography);
   if (!inverse) return null;
   const { x, y } = applyHomography(inverse, point);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
   return { col: x, row: y };
+}
+
+/** The key directly under a fingertip's 2D image position, or null off keys. */
+export function hoveredKey(grid, point) {
+  if (!grid?.homography || !point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
+  const position = imageToKeyboard(grid, point);
+  if (!position) return null;
+  let nearest = null;
+  for (const [code, key] of Object.entries(KEY_LAYOUT)) {
+    const dx = Math.abs(position.col - key.col);
+    const dy = Math.abs(position.row - key.row);
+    if (dx > key.width / 2 + 0.08 || dy > 0.48) continue;
+    const distance = Math.hypot(dx / Math.max(1, key.width), dy);
+    if (!nearest || distance < nearest.distance) nearest = { code, label: keyLabel(code), distance };
+  }
+  return nearest;
 }
 
 /** Where a key's center is in the image, or null for keys not in KEY_LAYOUT. */

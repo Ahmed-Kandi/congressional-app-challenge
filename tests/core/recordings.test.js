@@ -3,7 +3,8 @@
 // Each fixture in tests/fixtures/recordings is a trimmed real recording plus a
 // labels file saying which finger really pressed each key (make them with
 // `npm run fixture`). Targets live in tests/fixtures/recordings/targets.json.
-// Like the synthetic tests next to this file, these fail until the function exists.
+// Unverified assumed labels are checked for valid, repeatable answers but are
+// not used as accuracy ground truth until a person verifies them.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -13,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { attributeKeystroke } from "../../js/core/fingerAttribution.js";
 import { parseRecording } from "../../js/debug/replay.js";
 import { evaluateRecording, formatSummary, summarize } from "../../scripts/lib/evaluate.mjs";
-import { labelsForRecording, resolveLabels } from "../../scripts/lib/labels.mjs";
+import { labelsPathFor, loadLabels, resolveLabels } from "../../scripts/lib/labels.mjs";
 
 const FIXTURE_DIR = fileURLToPath(new URL("../fixtures/recordings/", import.meta.url));
 const targets = JSON.parse(readFileSync(join(FIXTURE_DIR, "targets.json"), "utf8"));
@@ -29,7 +30,7 @@ for (const fileName of fixtureNames) {
   const path = join(FIXTURE_DIR, fileName);
   const name = fileName.replace(/\.json$/, "");
   const recording = parseRecording(readFileSync(path, "utf8"));
-  const { labels } = labelsForRecording(path, recording);
+  const labels = loadLabels(labelsPathFor(path));
   const truths = resolveLabels(recording.keyEvents, labels);
   const arrivalLagMs = recording.meta?.frameLagMs ?? 0;
   const run = () => evaluateRecording(recording, truths, attributeKeystroke, { arrivalLagMs });
@@ -46,7 +47,10 @@ for (const fileName of fixtureNames) {
     );
   });
 
-  test(`${name}: meets its targets${unverified}`, () => {
+  // "expected finger" is not a ground-truth label until somebody watches the
+  // recording. Keep validity/determinism checks, but do not score accuracy on
+  // a guess about which finger the typist actually used.
+  test(`${name}: meets its targets${unverified}`, { skip: labels.verified === false }, () => {
     const goal = { ...targets.default, ...targets[name] };
     const summary = summarize(run());
     const report = `\n${formatSummary(summary, name)}\n`;

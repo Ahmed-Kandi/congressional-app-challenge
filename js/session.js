@@ -170,6 +170,19 @@ export class TypingSession {
     const usedCounts = emptyFingerCounts();
     for (const k of checked) usedCounts[k.fingerCheck.used] += 1;
 
+    // Keep camera-checked accuracy for the finger responsible for each key.
+    // Space accepts either thumb, so its result is split evenly between them.
+    const fingerAccuracyByFinger = Object.fromEntries(FINGERS.map((finger) => [finger, { correct: 0, total: 0 }]));
+    for (const keystroke of checked) {
+      const expected = keystroke.expectedFingers;
+      if (expected.length === 0) continue;
+      const share = 1 / expected.length;
+      for (const finger of expected) {
+        fingerAccuracyByFinger[finger].total += share;
+        if (keystroke.fingerCheck.status === "correct") fingerAccuracyByFinger[finger].correct += share;
+      }
+    }
+
     const fingerCheckAvailable = checked.length > 0;
     return {
       levelId: this.levelId,
@@ -181,6 +194,7 @@ export class TypingSession {
       keystrokeCount: this.keystrokes.length,
       fingerCheckAvailable,
       fingerAccuracy: fingerCheckAvailable ? (checked.length - wrong.length) / checked.length : null,
+      fingerAccuracyByFinger,
       fingersFor90Percent: fingerCheckAvailable ? fingersCoveringShare(usedCounts) : null,
       histogram: fingerCheckAvailable ? usedFingerHistogram(usedCounts) : expectedFingerHistogram(this.keystrokes),
       topSubstitutions: topSubstitutions(wrong.map((k) => ({ expected: k.expectedFingers, used: k.fingerCheck.used }))),

@@ -18,7 +18,7 @@ export const KEYS = {
 export const DEFAULT_SETTINGS = {
   mirrored: false,
   cameraFacing: "above", // "above" (above keyboard looking down) or "behind" (behind keyboard looking at user)
-  flipView: true, // display only: turn the picture around (upside down and mirrored) so the hands face the student
+  flipView: true, // Display only: turn the picture around so the hands face the typist.
 };
 
 // Find localStorage without letting a SecurityError escape.

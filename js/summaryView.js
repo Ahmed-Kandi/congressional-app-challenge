@@ -2,6 +2,7 @@
 
 import { HEADLINE_KEYSTROKE_SHARE } from "./config.js";
 import { LEVELS } from "./exercises.js";
+import { FINGERS, FINGER_LABELS } from "./fingerMap.js";
 
 export function formatPercent(fraction) {
   return fraction == null ? "--" : `${Math.round(fraction * 100)}%`;
@@ -91,8 +92,77 @@ export function historyEntry(summary, date = new Date()) {
     wpm: Math.round(summary.wpm),
     charAccuracy: summary.charAccuracy,
     fingerAccuracy: summary.fingerAccuracy,
+    fingerAccuracyByFinger: summary.fingerAccuracyByFinger,
     fingersFor90Percent: summary.fingersFor90Percent,
   };
+}
+
+/** Render recent, camera-checked accuracy beside simple left and right hand models. */
+export function renderDashboardFingerAccuracy(container, note, history) {
+  const totals = Object.fromEntries(FINGERS.map((finger) => [finger, { correct: 0, total: 0 }]));
+  for (const entry of history) {
+    for (const finger of FINGERS) {
+      const saved = entry.fingerAccuracyByFinger?.[finger];
+      if (!saved || !Number.isFinite(saved.correct) || !Number.isFinite(saved.total)) continue;
+      totals[finger].correct += saved.correct;
+      totals[finger].total += saved.total;
+    }
+  }
+
+  const hands = [
+    { side: "L", label: "Left hand", fingers: FINGERS.filter((finger) => finger.startsWith("L_")) },
+    { side: "R", label: "Right hand", fingers: FINGERS.filter((finger) => finger.startsWith("R_")) },
+  ];
+  container.replaceChildren(...hands.map(({ side, label, fingers }) => {
+    const card = element("article", null, "dashboard-hand-card");
+    const title = element("h3", label);
+    const model = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    model.setAttribute("viewBox", "0 0 100 112");
+    model.setAttribute("role", "img");
+    model.setAttribute("aria-label", `Model of the ${label.toLowerCase()}`);
+    model.classList.add("dashboard-hand-model");
+    const art = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    art.classList.add("dashboard-hand-art");
+    if (side === "R") art.classList.add("is-right-hand");
+    const handPath = "M30 104C27 100 26 95 24 89L10 59C7 52 10 46 15 44C20 42 24 46 27 52L32 63L23 23C22 17 25 12 30 11C36 10 39 14 40 20L46 53L43 14C42 8 46 4 52 4C58 4 61 8 61 14L62 52L63 20C63 14 67 11 72 12C78 13 80 18 79 24L76 57L80 35C81 29 85 26 90 28C95 30 96 35 94 41L85 76C84 82 86 89 83 96C81 102 76 105 69 105H39C35 105 32 105 30 104Z";
+    const handOutline = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    handOutline.setAttribute("d", handPath);
+    handOutline.setAttribute("class", "hero-hand-outline");
+    const handEdge = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    handEdge.setAttribute("d", handPath);
+    handEdge.setAttribute("class", "hero-hand-outline-top");
+    art.append(handOutline, handEdge);
+    const sideMark = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    sideMark.setAttribute("x", "50");
+    sideMark.setAttribute("y", "91");
+    sideMark.setAttribute("class", "dashboard-hand-side");
+    sideMark.textContent = side;
+    model.append(art, sideMark);
+
+    const rows = element("ul", null, "dashboard-finger-list");
+    for (const finger of fingers) {
+      const stats = totals[finger];
+      const fraction = stats.total > 0 ? stats.correct / stats.total : null;
+      const row = element("li", null, "dashboard-finger-stat");
+      row.dataset.finger = finger;
+      row.setAttribute("aria-label", `${FINGER_LABELS[finger]}: ${formatPercent(fraction)}, ${Math.round(stats.total)} camera checks`);
+      row.append(element("span", FINGER_LABELS[finger].replace(`${label.split(" ")[0].toLowerCase()} `, ""), "dashboard-finger-name"));
+      const track = element("span", null, "dashboard-finger-track");
+      track.setAttribute("aria-hidden", "true");
+      const fill = element("span", null, "dashboard-finger-fill");
+      fill.style.width = `${fraction == null ? 0 : fraction * 100}%`;
+      track.append(fill);
+      row.append(track, element("strong", formatPercent(fraction), "dashboard-finger-value"));
+      rows.append(row);
+    }
+    card.append(title, model, rows);
+    return card;
+  }));
+
+  const hasStats = FINGERS.some((finger) => totals[finger].total > 0);
+  note.textContent = hasStats
+    ? "Based on camera checks from your recent saved practice sessions. A dash means that finger has not been checked yet."
+    : "Finish a camera-checked practice session to see accuracy for each finger.";
 }
 
 /** Table of past sessions, newest first. */

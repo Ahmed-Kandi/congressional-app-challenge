@@ -11,7 +11,7 @@ import {
   MIN_TRACKING_CONFIDENCE,
   NUM_HANDS,
 } from "./config.js";
-import { assignSides } from "./handSides.js";
+import { assignSides } from "./handSides.js?v=rotation-calibration-1";
 
 /** The GPU delegate needs WebGL2. Check first so we can explain a CPU fallback. */
 export function webglAvailable() {
@@ -96,7 +96,7 @@ export class HandTracker {
   /**
    * @param {object} options
    * @param {HTMLVideoElement} options.video
-   * @param {() => {mirrored: boolean, cameraFacing: string}} options.getSettings
+   * @param {() => {mirrored: boolean, cameraFacing: string, rotated?: boolean}} options.getSettings
    * @param {(frame) => void} options.onFrame  called once per processed frame
    */
   constructor({ video, getSettings, onFrame }) {

@@ -8,6 +8,7 @@ import {
   applyHomography,
   computeKeyboardGrid,
   fitHomography,
+  hoveredKey,
   imageToKeyboard,
   invertHomography,
   keyCenterInImage,
@@ -110,6 +111,16 @@ test("keyDistance and imageToKeyboard measure in key widths", () => {
   assert.equal(keyCenterInImage(grid, "F13"), null);
 });
 
+test("a mapped fingertip shows the key beneath it and clears outside the keyboard", () => {
+  const { grid } = computeKeyboardGrid(syntheticCornerTouches(), null, "test");
+  for (const code of ["KeyF", "KeyJ", "KeyQ", "Slash", "Space"]) {
+    assert.equal(hoveredKey(grid, keyCenterInImage(grid, code))?.code, code);
+  }
+  assert.equal(hoveredKey(grid, keyboardToImage(grid, 16, 2)), null);
+  assert.equal(hoveredKey(grid, keyboardToImage(grid, 4, -2)), null);
+  assert.equal(hoveredKey(null, { x: 0.5, y: 0.5 }), null);
+});
+
 test("computeKeyboardGrid refuses a missing corner", () => {
   const touches = syntheticCornerTouches();
   delete touches.KeyZ;
@@ -131,13 +142,14 @@ test("computeKeyboardGrid refuses corners squeezed into a tiny area", () => {
   assert.equal(computeKeyboardGrid(touches, null, "test").ok, false);
 });
 
-test("computeKeyboardGrid refuses a grid two keys away from the home row fingers", () => {
+test("computeKeyboardGrid warns about a home row mismatch without discarding a visible map", () => {
   const touches = Object.fromEntries(
     Object.entries(syntheticCornerTouches()).map(([code, p]) => [code, { x: p.x + 2 * SYNTHETIC_KEY_PITCH, y: p.y }]),
   );
   const outcome = computeKeyboardGrid(touches, HOME_ROW, "test");
-  assert.equal(outcome.ok, false);
-  assert.match(outcome.reason, /keys away/);
+  assert.equal(outcome.ok, true);
+  assert.match(outcome.grid.homeRowWarning, /keys away/);
+  assert.ok(outcome.grid.homeRowErrorKeys > 1);
 });
 
 test("keyLabel turns codes into the character on the key", () => {

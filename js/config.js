@@ -37,11 +37,9 @@ export const FRAME_BUFFER_WINDOW_MS = 2000;
 
 // Wait this long after a key event before asking which finger pressed it.
 // Camera frames arrive later than key events, so we wait for the frames that
-// show the finger landing on the key to reach the buffer. The finger check uses
-// the frame nearest the key time; at 54 fps with 20-30 ms of frame lag
-// (measured 2026-10-23) that frame arrives 30-40 ms after the key, so 60 ms is
-// enough and halves the wait before the flash (it was 120).
-export const ATTRIBUTION_DELAY_MS = 60;
+// show the finger landing on the key to reach the buffer. At 30 fps with
+// 50 ms of camera lag, the next useful frame may arrive about 83 ms later.
+export const ATTRIBUTION_DELAY_MS = 100;
 
 // Attribution results below this confidence are shown as "finger check
 // unavailable" instead of right or wrong, so a guess never scolds the student.
@@ -68,7 +66,7 @@ export const CALIBRATION_DURATION_MS = 3000;
 // Share of calibration frames that must contain both hands, or we ask to retry.
 export const CALIBRATION_MIN_BOTH_HANDS_RATIO = 0.8;
 
-// ---- Keyboard grid (Q, P, Z, / pressed with an index finger) ----
+// ---- Keyboard grid (Q, P, Z, / mapped in the camera view) ----
 
 // Average the fingertip over frames this long before and after the key event.
 // The finger is on the key around the key time; a short window smooths out
@@ -83,20 +81,15 @@ export const KEYBOARD_GRID_MIN_SAMPLES = 1;
 // Reject corners that enclose less image area than this (normalized units, 1 =
 // the whole image). A keyboard seen from about 1 m covers well over 0.005.
 export const KEYBOARD_GRID_MIN_AREA = 0.001;
-// Reject a grid whose home row keys are, on average, more than this many key
-// widths from where the home row calibration saw the fingertips. Larger means
-// a corner was pressed with the wrong finger or the camera moved.
+// Warn when the mapped home row is, on average, this many key widths from the
+// measured fingertips. The student reviews the visible dots before saving.
 export const KEYBOARD_GRID_MAX_HOME_ROW_ERROR_KEYS = 1.0;
 
 // ---- Feedback ----
 
 // How long a fingertip flashes green or red after a keystroke.
 export const FLASH_DURATION_MS = 400;
-// A mistake stays marked longer (the cross on the finger used and the check on
-// the finger that should have pressed), so there is time to look at both.
 export const MISTAKE_FLASH_DURATION_MS = 1200;
-// One full-screen "beat" per keystroke: a quick rise, then a fade. Short enough
-// that beats at 60 WPM (a key every 200 ms) read as separate pulses.
 export const BEAT_FLASH_DURATION_MS = 450;
 
 // ---- Session statistics ----
@@ -114,17 +107,9 @@ export const LIVE_STATS_INTERVAL_MS = 500;
 
 // ---- Debug tools ----
 
-// Data collection run (Debug > Data collection): how many times each key is
-// asked for. 31 keys x 3 + 4 Space prompts is about 97 prompts, 5 minutes.
 export const DATA_COLLECTION_REPEATS = 3;
-// Share of prompts that ask for a WRONG finger on purpose, so the recordings
-// include labeled mistakes as well as good form.
 export const DATA_COLLECTION_WRONG_SHARE = 0.2;
-// A key only counts if the newest camera frame is at most this old and shows
-// both hands. Older means the camera stalled or the hands left the view.
 export const DATA_COLLECTION_MAX_FRAME_AGE_MS = 500;
-// Keep recording this long after the last prompt, so the frames the finger
-// check looks at after the key (ATTRIBUTION_DELAY_MS) are in the file.
 export const DATA_COLLECTION_TAIL_MS = 500;
 
 // Motion traces show this much time before and after the key event.
@@ -137,9 +122,7 @@ export const TRACE_HISTORY_LIMIT = 50;
 export const REPLAY_END_HOLD_MS = 500;
 // Safety cap on a recording (about 5 minutes at 60 fps) so memory stays sane.
 export const RECORDING_MAX_FRAMES = 18000;
-export const HOME_LIMIT_HAND_SPANS = 0.25;
-//works because short distance is what we will be demoing, and it sits safely under 0.33, range of next key.
+
+// Finger position can corroborate observed fingertip motion after mapping.
 export const ON_KEY_LIMIT_KEYS = 1.0;
-//a fingertip further than this from the pressed key (in key widths) is not on the key.
 export const CLEAR_WINNER_MARGIN_KEYS = 0.3;
-//the nearest fingertip has to be this much closer than the next one, otherwise it's too close to call.

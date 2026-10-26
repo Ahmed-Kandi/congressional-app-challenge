@@ -1,4 +1,4 @@
-# Typing Form Coach
+# Hightype
 
 A browser app that watches your real hands through a camera while you type and tells you, live, when you pressed a key with the wrong finger.
 
@@ -8,17 +8,17 @@ Built for the 2026 Congressional App Challenge (California's 39th district) by a
 
 Typing tutors can't see your hands. They show an animated hand and trust you to copy it, so a student who types with two index fingers can still "pass" every lesson.
 
-Typing Form Coach uses the camera to follow the student's actual fingers. When a key is pressed, the browser already knows which key and exactly when. The app looks back through the last few camera frames to see which finger moved toward the keyboard, and compares it with the finger that should press that key. It combines two data streams (keystrokes and video) and needs no keyboard calibration: it never has to find where the keys are in the picture.
+Hightype uses the camera to follow the student's actual fingers. When a key is pressed, the browser knows which key and when. The app checks fingertip motion around that moment, uses the mapped keyboard position as supporting evidence, and compares the result with the expected finger. It leaves the finger check unavailable when the camera evidence is unclear.
 
-The app has five screens:
+The main flow is:
 
-1. **Setup:** pick a camera, set how it is mounted, and check that both hands are visible.
-2. **Calibrate:** rest your fingers on the home row for 3 seconds.
-3. **Choose:** Level 1 home row drills, Level 2 home row words, Level 3 full sentences.
-4. **Exercise:** type the text. The fingertip flashes green or red, a sentence says "Wrong finger: used right middle, should be left index", and WPM and accuracy update live.
-5. **Summary:** WPM, accuracy, finger accuracy, a chart of keystrokes per finger, "You used N fingers for 90 percent of your keystrokes", your most common wrong-finger habits, and your last 10 sessions.
+1. **Landing and dashboard:** see the introduction, start camera setup, or choose lessons.
+2. **Camera setup:** select a camera, confirm the keyboard view and camera angle, then check that both hands and their labels are correct.
+3. **Calibration:** rest your fingers on the home row for 3 seconds, then drag four discs onto the Q, P, Z and / keys in the camera view.
+4. **Practice:** take the passage typing test or choose a lesson. The camera view labels visible fingers and their estimated keys. During lessons, confident finger checks give written feedback and colored flashes.
+5. **Results:** review speed, character and finger accuracy, per-finger counts, common substitutions and recent sessions.
 
-A **Debug** button (bottom-left corner) opens tools for the team: fps, timestamps, recording and replaying sessions, and motion plots of every fingertip around each keystroke.
+The **Debug** button opens recording, replay and motion-trace tools. Its labeled data collection run asks for specific key and finger presses, then downloads a recording with the labels embedded for evaluation.
 
 ## The problem
 
@@ -45,7 +45,7 @@ Other commands:
 | Command | What it does |
 |---|---|
 | `npm test` | Unit tests (must pass). |
-| `npm run test:core` | Tests for the team's finger attribution function. These fail until it is written. |
+| `npm run test:core` | Synthetic finger attribution tests and camera recording evaluation. The bundled recordings with unverified labels are skipped. |
 | `npm run e2e` | Browser smoke test in Chromium with a fake camera. Run `npx playwright install chromium` once first. |
 | `npm run check` | Syntax check of every .js file, then `npm test`, then `npm run e2e`. |
 | `npm run evaluate -- recordings/` | Score the finger check on labeled recordings (format in `scripts/lib/labels.mjs`). `--list <file>` numbers the keys for labeling. |
@@ -66,7 +66,8 @@ Any other webcam works the same way: pick it from the list.
 
 - **Best:** above the keyboard looking down at your hands, high enough that both hands and the whole keyboard fit in the picture. Choose "Above the keyboard, looking down at my hands".
 - **Also works:** on the far side of the keyboard, tilted down toward your hands. Choose "Behind the keyboard, looking at me".
-- Check the big **L** and **R** labels on your wrists in the video. If they are on the wrong hands, tick "Image is mirrored". (This also fixes a camera that is upside down.)
+- Check the **L** and **R** labels on your wrists in the video. If they are on the wrong hands, adjust the mirrored-image setting. Use **Rotate view 180°** when the camera image is upside down.
+- **Show my hands facing me** turns the displayed picture around for a more natural view; finger checks use the original camera data.
 - Use even lighting. Avoid a bright window behind your hands.
 - The Continue button unlocks when both hands have been visible for one second.
 
@@ -84,5 +85,5 @@ There is no build step. Every path in the app is relative, so it works under the
 - **Video stays on this device. Nothing is uploaded.** Hand tracking runs inside the browser.
 - The only network requests are downloading the MediaPipe hand tracking library (from cdn.jsdelivr.net) and its hand model (from storage.googleapis.com) when the page loads.
 - No accounts, no analytics, no backend, no AI services.
-- Settings, calibration and your last 10 session scores are saved in your own browser's `localStorage`. Clearing site data removes them.
-- Debug recordings contain hand landmark positions and key presses (not video). They are only saved if you press Record and are downloaded to your own computer.
+- Settings and your last 10 session scores are saved in your browser's `localStorage`. Camera and keyboard calibration is cleared on each app load and whenever setup starts, because the camera can move between uses.
+- Debug recordings contain hand landmark positions and key presses (not video). They are downloaded only when you record or complete a labeled collection run.

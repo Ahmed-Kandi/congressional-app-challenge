@@ -18,9 +18,8 @@ import { FrameBuffer } from "../js/frameBuffer.js";
 const key = { code: "KeyF", key: "f", t: 1000 };
 const fixed = (value) => () => value;
 
-test("the stub is still a stub (the team has not replaced it yet)", () => {
-  // When the team implements their function this test should be deleted or changed.
-  if (ATTRIBUTION_IMPLEMENTED) return;
+test("the implemented finger check stays neutral without camera frames", () => {
+  assert.equal(ATTRIBUTION_IMPLEMENTED, true);
   assert.equal(attributeKeystroke(key, new FrameBuffer(), null), null);
 });
 

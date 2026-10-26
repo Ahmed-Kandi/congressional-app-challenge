@@ -1,6 +1,4 @@
-// Tests for the TEAM'S attributeKeystroke() in js/core/fingerAttribution.js.
-//
-// These are EXPECTED TO FAIL until the team writes that function.
+// Tests for attributeKeystroke() in js/core/fingerAttribution.js.
 // Run them with: npm run test:core
 //
 // Every test builds synthetic frames (tests/synthetic.js) where we KNOW which
@@ -76,6 +74,16 @@ for (const finger of NON_THUMB_FINGERS) {
   });
 }
 
+test("a nearby wrong finger is identified instead of assuming the key's expected finger", () => {
+  const { frames, keyEvents } = generateSynthetic({
+    fps: 30, seed: 8, durationMs: 1200, presses: [{ finger: "L_MIDDLE", t: KEY_TIME }],
+  });
+  const buffer = new FrameBuffer();
+  for (const frame of frames) if (frame.t <= KEY_TIME + ATTRIBUTION_DELAY_MS) buffer.push(frame);
+  const result = attributeKeystroke({ ...keyEvents[0], code: "KeyF", key: "f" }, buffer, CALIBRATION_WITH_GRID);
+  assertPicks("L_MIDDLE", result, "Left middle used on F, which normally expects left index");
+});
+
 for (const finger of NON_THUMB_FINGERS) {
   test(`50 ms of frame lag, 30 fps: ${finger}`, () => {
     const result = attributeScenario({ fps: 30, seed: 2, frameLagMs: 50, presses: [{ finger, t: KEY_TIME }] });
@@ -126,6 +134,13 @@ test("the pressing hand is missing: returns null or low confidence", () => {
 test("empty frame buffer: returns null or low confidence", () => {
   const result = attributeKeystroke({ code: "KeyF", key: "f", t: KEY_TIME }, new FrameBuffer(), CALIBRATION);
   assertUnsure(result, "No frames at all");
+});
+
+test("still hands do not produce a confident finger check from tracking noise", () => {
+  const { frames } = generateSynthetic({ fps: 30, noise: 0.004, seed: 71, durationMs: 1200 });
+  const buffer = new FrameBuffer();
+  for (const frame of frames) buffer.push(frame);
+  assertUnsure(attributeKeystroke({ code: "KeyF", key: "f", t: KEY_TIME }, buffer, CALIBRATION_WITH_GRID), "No press");
 });
 
 test("never returns a finger ID that is not in the map, and confidence stays in 0..1", () => {

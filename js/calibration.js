@@ -8,12 +8,8 @@ import {
   CALIBRATION_DURATION_MS,
   CALIBRATION_MIN_BOTH_HANDS_RATIO,
   CALIBRATION_SETTLE_MS,
-  KEYBOARD_GRID_MIN_SAMPLES,
-  KEYBOARD_GRID_SAMPLE_AFTER_MS,
-  KEYBOARD_GRID_SAMPLE_BEFORE_MS,
-  KEYBOARD_GRID_WAIT_MS,
 } from "./config.js";
-import { FINGERS, fingerLabel } from "./fingerMap.js";
+import { FINGERS } from "./fingerMap.js";
 import { GRID_CORNERS, computeKeyboardGrid } from "./keyboardGrid.js";
 import { INDEX_TIP, PINKY_TIP, WRIST, fingertipLocation } from "./landmarks.js";
 import { KEYS, storage } from "./storage.js";
@@ -159,90 +155,85 @@ export function averageFingertip(frames, finger) {
   return tips.length === 0 ? null : { point: averagePoint(tips), samples: tips.length };
 }
 
+/** Convert a click in an object-fit: contain video into normalized image coordinates. */
+export function pointInVideoFrame(clientX, clientY, rect, videoWidth, videoHeight) {
+  if (!rect?.width || !rect?.height || !videoWidth || !videoHeight) return null;
+  const scale = Math.min(rect.width / videoWidth, rect.height / videoHeight);
+  const width = videoWidth * scale;
+  const height = videoHeight * scale;
+  const left = rect.left + (rect.width - width) / 2;
+  const top = rect.top + (rect.height - height) / 2;
+  const x = (clientX - left) / width;
+  const y = (clientY - top) / height;
+  return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null;
+}
+
 /**
- * Run the keyboard grid step: the student presses Q, P, Z and / with the index
- * finger we name, and we record where that fingertip was in the image.
+ * Run the keyboard grid step. Clicking a key in the video records its center;
+ * pressing the physical key can still use the named fingertip when available.
  * @param {object} options
  * @param {object} options.elements  { prompt, steps: HTMLLIElement[] (one per corner), status }
- * @param {import('./frameBuffer.js').FrameBuffer} options.frameBuffer
  * @param {() => object|null} options.getHomeRow  the home row calibration, to check the fit
- * @param {(grid: object) => void} options.onGrid
+ * @param {(grid: object|null) => void} options.onGrid  null when placed discs need adjustment
+ * @param {(touches: object|null) => void} [options.onProgress]
  */
-export function createKeyboardGridCapture({ elements, frameBuffer, getHomeRow, onGrid }) {
-  let cornerIndex = -1; // -1 = not running
-  let waiting = false;
+export function createKeyboardGridCapture({ elements, getHomeRow, onGrid, onProgress = () => {} }) {
+  let active = false;
   let touches = {};
 
   function render() {
+    const nextCorner = GRID_CORNERS.find((corner) => !touches[corner.code]);
     GRID_CORNERS.forEach((corner, i) => {
       const done = Boolean(touches[corner.code]);
       const item = elements.steps[i];
       item.classList.toggle("done", done);
-      item.classList.toggle("current", i === cornerIndex);
-      item.querySelector(".step-mark").textContent = done ? "✓" : i === cornerIndex ? "→" : "";
+      item.classList.toggle("current", corner === nextCorner);
+      item.querySelector(".step-mark").textContent = done ? "✓" : corner === nextCorner ? "→" : "";
     });
-    const corner = GRID_CORNERS[cornerIndex];
     elements.prompt.replaceChildren();
-    if (!corner) return;
-    const key = document.createElement("kbd");
-    key.textContent = corner.label;
-    elements.prompt.append("Press ", key, ` with your ${fingerLabel(corner.finger)} finger.`);
+    if (nextCorner) {
+      const key = document.createElement("kbd");
+      key.textContent = nextCorner.label;
+      elements.prompt.append("Place the ", key, " disc on its key.");
+    } else {
+      elements.prompt.textContent = "All four discs are placed. Move any disc to adjust it.";
+    }
   }
 
   function start() {
-    cornerIndex = 0;
-    waiting = false;
+    active = true;
     touches = {};
-    elements.status.textContent = "Keep the camera still. Press each key once, firmly.";
+    onProgress(null);
+    elements.status.textContent = "Drag Q, P, Z, and / onto the centers of those keys.";
     render();
   }
 
   function stop() {
-    cornerIndex = -1;
-    waiting = false;
+    active = false;
+    onProgress(null);
     render();
   }
 
-  function sample(keyEvent, corner) {
-    waiting = false;
-    if (cornerIndex < 0) return; // stopped while waiting
-    const frames = frameBuffer.between(keyEvent.t - KEYBOARD_GRID_SAMPLE_BEFORE_MS, keyEvent.t + KEYBOARD_GRID_SAMPLE_AFTER_MS);
-    const tip = averageFingertip(frames, corner.finger);
-    const side = corner.finger.startsWith("L") ? "left" : "right";
-    if (!tip || tip.samples < KEYBOARD_GRID_MIN_SAMPLES) {
-      elements.status.textContent = `The camera could not see your ${side} hand when you pressed ${corner.label}. Press ${corner.label} again.`;
+  function handlePoint(code, point) {
+    if (!active || !GRID_CORNERS.some((corner) => corner.code === code)) return;
+    touches[code] = { x: point.x, y: point.y };
+    onProgress({ ...touches });
+    render();
+    const missing = GRID_CORNERS.filter((corner) => !touches[corner.code]);
+    if (missing.length) {
+      const next = missing[0];
+      elements.status.textContent = `Placed ${GRID_CORNERS.find((corner) => corner.code === code).label}. Next, drag ${next.label} onto its key.`;
       return;
     }
-    touches[corner.code] = tip.point;
-    cornerIndex += 1;
-    if (cornerIndex < GRID_CORNERS.length) {
-      elements.status.textContent = `Got ${corner.label}.`;
-      render();
-      return;
-    }
+
     const outcome = computeKeyboardGrid(touches, getHomeRow());
     if (!outcome.ok) {
-      start();
-      elements.status.textContent = `${outcome.reason} Starting again from Q.`;
+      onGrid(null);
+      elements.status.textContent = `${outcome.reason} Drag the discs to adjust their positions.`;
       return;
     }
-    cornerIndex = -1;
-    render();
     onGrid(outcome.grid);
   }
 
-  /** Feed every key press here while the step is on screen. */
-  function handleKey(keyEvent) {
-    const corner = GRID_CORNERS[cornerIndex];
-    if (!corner || waiting) return;
-    if (keyEvent.code !== corner.code) {
-      elements.status.textContent = `That was ${keyEvent.key === " " ? "Space" : keyEvent.key}. Press ${corner.label}.`;
-      return;
-    }
-    // The camera frames showing the finger on the key arrive a little after the key event.
-    waiting = true;
-    setTimeout(() => sample(keyEvent, corner), KEYBOARD_GRID_WAIT_MS);
-  }
-
-  return { start, stop, handleKey, get running() { return cornerIndex >= 0; } };
+  return { start, stop, handlePoint, get running() { return active; } };
 }

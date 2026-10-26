@@ -1,17 +1,17 @@
 // App bootstrap and screen state machine.
-// Screens: setup -> calibrate -> choose -> exercise -> summary (and back).
+// Screens: landing -> setup -> calibrate -> choose -> exercise -> summary (and back).
 // main.js wires modules together; the real work lives in the other files.
 
 import {
   ATTRIBUTION_DELAY_MS,
-  DATA_COLLECTION_MAX_FRAME_AGE_MS,
-  DATA_COLLECTION_REPEATS,
-  DATA_COLLECTION_TAIL_MS,
-  DATA_COLLECTION_WRONG_SHARE,
   LIVE_STATS_INTERVAL_MS,
   LOW_FPS_GRACE_MS,
   LOW_FPS_THRESHOLD,
   SETUP_BOTH_HANDS_REQUIRED_MS,
+  DATA_COLLECTION_REPEATS,
+  DATA_COLLECTION_WRONG_SHARE,
+  DATA_COLLECTION_MAX_FRAME_AGE_MS,
+  DATA_COLLECTION_TAIL_MS,
 } from "./config.js";
 import {
   CameraError,
@@ -25,10 +25,10 @@ import {
   rememberedCamera,
   watchCameraChanges,
 } from "./camera.js";
-import { ATTRIBUTION_IMPLEMENTED, attributeKeystroke } from "./core/fingerAttribution.js";
-import { createCalibrationScreen, createKeyboardGridCapture, loadCalibration, saveCalibration } from "./calibration.js";
+import { ATTRIBUTION_IMPLEMENTED, attributeKeystroke } from "./core/fingerAttribution.js?v=friend-logic-merge-1";
+import { createCalibrationScreen, createKeyboardGridCapture, loadCalibration, pointInVideoFrame, saveCalibration } from "./calibration.js?v=keyboard-discs-1";
 import { LEVELS, getExerciseText } from "./exercises.js";
-import { beatKind, evaluateAttribution, runAttribution, showFingerCheck, showWrongKey } from "./feedback.js";
+import { beatKind, evaluateAttribution, runAttribution, showFingerCheck, showWrongKey } from "./feedback.js?v=friend-logic-merge-1";
 import { buildPrompts, createCollectionSession, describePrompt } from "./debug/dataCollection.js";
 import { createBeatFlash } from "./beatFlash.js";
 import { Recorder, downloadRecording } from "./debug/recorder.js";
@@ -36,17 +36,19 @@ import { createReplayer, parseRecording } from "./debug/replay.js";
 import { createTraceStore, describeSnapshot, drawTraces, renderLegend } from "./debug/traces.js";
 import { describeFingers, expectedFingersForChar, needsShift } from "./fingerMap.js";
 import { FrameBuffer } from "./frameBuffer.js";
-import { HandTracker } from "./handTracker.js";
+import { HandTracker } from "./handTracker.js?v=rotation-calibration-1";
 import { startKeyboardCapture } from "./keyboard.js";
-import { Overlay } from "./overlay.js";
+import { Overlay } from "./overlay.js?v=friend-logic-merge-1";
 import { createPipeline } from "./pipeline.js";
-import { TypingSession } from "./session.js";
-import { formatPercent, historyEntry, renderHistory, renderSummary } from "./summaryView.js";
+import { TypingSession } from "./session.js?v=dashboard-finger-accuracy-1";
+import { formatPercent, historyEntry, renderDashboardFingerAccuracy, renderHistory, renderSummary } from "./summaryView.js?v=dashboard-finger-accuracy-1";
 import { KEYS, storage } from "./storage.js";
 
 // ---------- Element lookup ----------
 
 const $ = (id) => document.getElementById(id);
+const DEVICE_IS_PHONE = /iPhone|iPod|Android.*Mobile|Windows Phone/i.test(navigator.userAgent);
+const DEVICE_IS_MAC = /mac/i.test(navigator.userAgentData?.platform || navigator.platform || navigator.userAgent);
 
 const ui = {
   globalError: $("global-error"),
@@ -54,23 +56,67 @@ const ui = {
   stage: $("stage"),
   video: $("camera-video"),
   overlayCanvas: $("overlay-canvas"),
+  // landing
+  landingNavStart: $("landing-nav-start"),
+  landingNavTest: $("landing-nav-test"),
+  dashboardChecks: [...document.querySelectorAll("[data-dashboard-check]")],
+  dashboardLevelList: $("dashboard-level-list"),
+  dashboardViewButtons: [...document.querySelectorAll("[data-dashboard-view]")],
+  dashboardOverview: $("dashboard-overview"),
+  dashboardLessonsView: $("dashboard-lessons-view"),
+  dashboardFirstVisit: $("dashboard-first-visit"),
+  dashboardStartTitle: $("dashboard-start-title"),
+  dashboardStartDescription: $("dashboard-start-description"),
+  landingFinalStart: $("landing-final-start"),
+  landingSkip: $("landing-skip"),
+  dashboardCameraStart: $("dashboard-camera-start"),
+  dashboardCameraPreview: $("dashboard-camera-preview"),
+  dashboardCameraPreviewDialog: $("dashboard-camera-preview-dialog"),
+  dashboardCameraPreviewClose: $("dashboard-camera-preview-close"),
+  dashboardPreviewVideo: $("dashboard-preview-video"),
+  dashboardPreviewOverlay: $("dashboard-preview-overlay"),
+  dashboardPreviewStatus: $("dashboard-preview-status"),
+  dashboardFingerAccuracy: $("dashboard-finger-accuracy"),
+  dashboardFingerAccuracyNote: $("dashboard-finger-accuracy-note"),
+  typingCopy: $("typing-copy"),
+  // standalone baseline typing test
+  typingTestInput: $("typing-test-input"),
+  typingTestPassage: $("typing-test-passage"),
+  typingTestStart: $("typing-test-start"),
+  typingTestNext: $("typing-test-next"),
+  typingTestWpm: $("typing-test-wpm"),
+  typingTestAccuracy: $("typing-test-accuracy"),
+  typingTestStatus: $("typing-test-status"),
   // setup
   setupError: $("setup-error"),
   setupNotice: $("setup-notice"),
   cameraPicker: $("camera-picker"),
   cameraRefresh: $("camera-refresh"),
+  setupCameraGroup: $("setup-camera-group"),
   mirroredToggle: $("mirrored-toggle"),
   flipToggle: $("flip-toggle"),
+  setupRotateVideo: $("setup-rotate-video"),
   facingRadios: document.querySelectorAll('input[name="camera-facing"]'),
   indicatorLeft: $("indicator-left"),
   indicatorRight: $("indicator-right"),
   setupFps: $("setup-fps"),
   positioningTip: $("positioning-tip"),
   setupStatus: $("setup-status"),
+  setupBack: $("setup-back"),
   setupContinue: $("setup-continue"),
-  setupSkipCamera: $("setup-skip-camera"),
+  setupControlsPanel: $("setup-controls-panel"),
+  setupKeyboardConfirmed: $("keyboard-in-frame"),
+  setupLabelsConfirmed: $("setup-labels-confirmed"),
+  setupStepCount: $("setup-step-count"),
+  cameraFlowProgresses: [...document.querySelectorAll("[data-camera-flow-progress]")],
+  cameraFlowProgressLabels: [...document.querySelectorAll("[data-camera-flow-label]")],
+  setupStepPanels: [...document.querySelectorAll("[data-setup-step]")],
+  setupStepDots: [...document.querySelectorAll("[data-step-dot]")],
+  setupPlatformCopy: [...document.querySelectorAll("[data-platform-copy]")],
+  setupLiveStatus: $("setup-live-status"),
   // calibrate
   calibrateCountdown: $("calibrate-countdown"),
+  calibrateStepTag: $("calibrate-step-tag"),
   calibrateProgress: $("calibrate-progress"),
   calibrateStatus: $("calibrate-status"),
   calibrateStart: $("calibrate-start"),
@@ -79,6 +125,9 @@ const ui = {
   calibrateGridStep: $("calibrate-grid-step"),
   gridTitle: $("grid-title"),
   gridPrompt: $("grid-prompt"),
+  gridDiscTray: $("grid-disc-tray"),
+  gridDiscLayer: $("grid-disc-layer"),
+  gridMapDiscs: [...document.querySelectorAll(".grid-map-disc")],
   gridSteps: [...document.querySelectorAll("#grid-steps li")],
   gridStatus: $("grid-status"),
   gridCaptureButtons: $("grid-capture-buttons"),
@@ -104,6 +153,7 @@ const ui = {
   liveAccuracy: $("live-accuracy"),
   liveTyped: $("live-typed"),
   exerciseQuit: $("exercise-quit"),
+  exerciseCameraStatus: $("exercise-camera-status"),
   // summary
   summaryHeadline: $("summary-headline"),
   summaryHistogram: $("summary-histogram"),
@@ -115,7 +165,7 @@ const ui = {
   summaryFingerAccuracy: $("summary-finger-accuracy"),
   summaryAgain: $("summary-again"),
   summaryChoose: $("summary-choose"),
-  // data collection run
+  // labeled recording tool
   collectIntro: $("collect-intro"),
   collectRunning: $("collect-running"),
   collectDone: $("collect-done"),
@@ -135,7 +185,6 @@ const ui = {
   collectDoneBack: $("collect-done-back"),
   // debug
   debugToggle: $("debug-toggle"),
-  debugCollect: $("debug-collect"),
   debugPanel: $("debug-panel"),
   debugFps: $("debug-fps"),
   debugTimestampSource: $("debug-timestamp-source"),
@@ -149,6 +198,7 @@ const ui = {
   debugRecord: $("debug-record"),
   debugStop: $("debug-stop"),
   debugRecordStatus: $("debug-record-status"),
+  debugCollect: $("debug-collect"),
   debugLoad: $("debug-load"),
   debugReplayStatus: $("debug-replay-status"),
   traceSelect: $("trace-select"),
@@ -170,6 +220,9 @@ const state = {
   tracker: null,
   trackerReady: false,
   bothHandsSince: null,
+  setupStep: 1,
+  cameraViewRotated: false,
+  setupHandsReady: false,
   session: null,
   exerciseActive: false,
   targetSpans: [],
@@ -178,12 +231,28 @@ const state = {
   calibrationBeforeReplay: null,
   pendingFingerChecks: 0,
   fingerCheckWaiters: [],
+  setupStarted: false,
+  dashboardSetupComplete: false,
+  dashboardPreviewStream: null,
+  dashboardPreviewRequestId: 0,
+  typingTestNextScreen: "setup",
+  typingTestStartedAt: null,
+  typingTestFinishedAt: null,
+  typingTestActive: false,
+  typingTestFinished: false,
 };
+
+function clearSavedCalibration() {
+  state.calibration = null;
+  storage.remove(KEYS.calibration);
+}
 
 const frameBuffer = new FrameBuffer();
 const pipeline = createPipeline({ frameBuffer });
 const overlay = new Overlay(ui.overlayCanvas, ui.video);
 const beatFlash = createBeatFlash($("beat-flash"));
+const dashboardPreviewOverlay = new Overlay(ui.dashboardPreviewOverlay, ui.dashboardPreviewVideo);
+dashboardPreviewOverlay.setHandsVisible(false);
 
 // ---------- Screens ----------
 
@@ -194,10 +263,29 @@ const STAGE_SLOTS = {
   collect: "collect-stage-slot",
 };
 
-function showScreen(name) {
-  // Leaving the data collection screen mid-run throws the run away.
-  if (name !== "collect" && collection) cancelCollection();
+const TYPING_TEST_PASSAGE = "Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do: once or twice she had peeped into the book her sister was reading, but it had no pictures or conversations in it, \"and what is the use of a book,\" thought Alice \"without pictures or conversations?\"";
+let typingTestWpmIntervalId = null;
+let activePageTurn = null;
+let resetLandingAnimations = () => {};
+let startLandingAnimations = () => {};
+
+function renderScreen(name) {
+  if (state.screen === "typing-test" && name !== "typing-test") stopTypingTest();
   state.screen = name;
+  const navItems = [
+    [$("landing-nav-how"), null],
+    [ui.landingNavTest, name === "typing-test" ? "page" : null],
+    [$("landing-nav-about"), name === "about" ? "page" : null],
+    [ui.landingNavStart, ["dashboard", "setup", "calibrate", "choose", "exercise", "summary", "collect"].includes(name) ? "page" : null],
+  ];
+  for (const [item, current] of navItems) {
+    if (current) item.setAttribute("aria-current", current);
+    else item.removeAttribute("aria-current");
+  }
+  if (name !== "calibrate") {
+    ui.stage.classList.remove("is-mapping");
+    overlay.setKeyboardTouches(null);
+  }
   for (const section of document.querySelectorAll(".screen")) {
     section.hidden = section.dataset.screen !== name;
   }
@@ -211,12 +299,287 @@ function showScreen(name) {
   }
   screenEnterHandlers[name]?.();
   updateOverlayGrid();
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
   // Move keyboard and screen reader focus to the new screen's heading.
   // (The exercise screen focuses its typing area instead.)
-  if (name !== "exercise") document.querySelector(`#screen-${name} h2`)?.focus();
+  if (name === "typing-test") ui.typingTestInput.focus({ preventScroll: true });
+  else if (name !== "exercise") document.querySelector(`#screen-${name} :is(h1, h2)`)?.focus({ preventScroll: true });
+}
+
+function showScreen(name) {
+  if (state.screen === name) return Promise.resolve();
+  const animate = state.screen !== null && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!animate) {
+    renderScreen(name);
+    return Promise.resolve();
+  }
+
+  activePageTurn?.finish();
+  const cover = document.createElement("div");
+  cover.className = "page-turn-cover";
+  cover.setAttribute("aria-hidden", "true");
+  if (name === "landing") cover.classList.add("page-turn-cover--landing");
+  const appHeader = document.querySelector(".app-header");
+  appHeader.classList.add("is-page-turning");
+  cover.innerHTML = `
+    <svg class="page-turn-art" aria-hidden="true" preserveAspectRatio="none">
+      <defs>
+        <pattern id="page-turn-rules" patternUnits="userSpaceOnUse" width="4000" height="64">
+          <rect width="4000" height="64" fill="var(--turn-paper)" />
+          <path d="M0 63.5H4000" stroke="rgba(255, 107, 107, 0.16)" stroke-width="1" />
+        </pattern>
+        <linearGradient id="page-turn-fold-shade" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#fff" stop-opacity="0" />
+          <stop offset="0.58" stop-color="#fff" stop-opacity="0.14" />
+          <stop offset="0.82" stop-color="#000" stop-opacity="0.22" />
+          <stop offset="1" stop-color="#fff" stop-opacity="0.12" />
+        </linearGradient>
+        <clipPath id="page-turn-clip"><path class="page-turn-clip-shape" /></clipPath>
+      </defs>
+      <path class="page-turn-sheet" fill="url(#page-turn-rules)" />
+      <path class="page-turn-margin" clip-path="url(#page-turn-clip)" />
+      <path class="page-turn-fold" clip-path="url(#page-turn-clip)" stroke="url(#page-turn-fold-shade)" />
+    </svg>
+    <div class="page-turn-logo" aria-hidden="true">high<span class="logo-circled logo-serif">type</span></div>`;
+  document.body.append(cover);
+
+  const svg = cover.querySelector("svg");
+  const sheet = cover.querySelector(".page-turn-sheet");
+  const clip = cover.querySelector(".page-turn-clip-shape");
+  const margin = cover.querySelector(".page-turn-margin");
+  const fold = cover.querySelector(".page-turn-fold");
+  const shade = cover.querySelector("#page-turn-fold-shade");
+  const duration = 850;
+  return new Promise((resolve) => {
+    let finished = false;
+    let rendered = false;
+    let frameId;
+    let revealTimer;
+    let safetyTimer;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      cancelAnimationFrame(frameId);
+      clearTimeout(revealTimer);
+      clearTimeout(safetyTimer);
+      if (!rendered) renderScreen(name);
+      cover.remove();
+      appHeader.classList.remove("is-page-turning");
+      if (activePageTurn?.cover === cover) activePageTurn = null;
+      resolve();
+    };
+    const reveal = () => {
+      if (rendered || finished) return;
+      rendered = true;
+      renderScreen(name);
+      cover.classList.add("is-revealing");
+      revealTimer = setTimeout(finish, 180);
+    };
+    const startTime = performance.now();
+    const draw = (now) => {
+      if (finished) return;
+      const width = window.innerWidth;
+      // Leave the coral divider on the sticky header above the animated sheet.
+      const topOffset = appHeader.getBoundingClientRect().bottom + 2;
+      const height = Math.max(1, window.innerHeight - topOffset);
+      cover.style.setProperty("--page-turn-top", `${topOffset}px`);
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      const time = Math.min(1, (now - startTime) / duration);
+      const progress = time < 0.5 ? 4 * time ** 3 : 1 - (-2 * time + 2) ** 3 / 2;
+      const edge = -50 + (width + 110) * progress;
+      const bend = Math.sin(Math.PI * time) * Math.min(70, width * 0.05);
+      const top = edge - bend * 0.4;
+      const middle = edge + bend;
+      const bottom = edge - bend * 0.7;
+      const curve = `M ${top} 0 C ${top + bend * 0.65} ${height * 0.2}, ${middle + bend * 0.12} ${height * 0.34}, ${middle} ${height * 0.5} C ${middle - bend * 0.3} ${height * 0.7}, ${bottom + bend * 0.55} ${height * 0.84}, ${bottom} ${height}`;
+      const page = `M -50 0 L ${top} 0 C ${top + bend * 0.65} ${height * 0.2}, ${middle + bend * 0.12} ${height * 0.34}, ${middle} ${height * 0.5} C ${middle - bend * 0.3} ${height * 0.7}, ${bottom + bend * 0.55} ${height * 0.84}, ${bottom} ${height} L -50 ${height} Z`;
+      sheet.setAttribute("d", page);
+      clip.setAttribute("d", page);
+      fold.setAttribute("d", curve);
+      margin.setAttribute("d", `M ${Math.min(160, width * 0.11)} 0 V ${height}`);
+      shade.setAttribute("x1", String(edge - 60));
+      shade.setAttribute("x2", String(edge + 20));
+      if (time < 1) frameId = requestAnimationFrame(draw);
+      else reveal();
+    };
+    activePageTurn = { cover, finish };
+    safetyTimer = setTimeout(reveal, duration + 200);
+    frameId = requestAnimationFrame(draw);
+  });
 }
 
 const screenEnterHandlers = {};
+
+function stopTypingTest() {
+  if (typingTestWpmIntervalId !== null) {
+    clearInterval(typingTestWpmIntervalId);
+    typingTestWpmIntervalId = null;
+  }
+  state.typingTestActive = false;
+}
+
+function typingTestMetrics(now = performance.now()) {
+  const typed = [...ui.typingTestInput.value];
+  const target = [...TYPING_TEST_PASSAGE];
+  let correct = 0;
+  typed.forEach((character, index) => {
+    if (character === target[index]) correct += 1;
+  });
+  const elapsedMs = state.typingTestStartedAt == null
+    ? 0
+    : Math.max(0, (state.typingTestFinishedAt ?? now) - state.typingTestStartedAt);
+  const elapsedMinutes = elapsedMs / 60_000;
+  return {
+    correct,
+    typed: typed.length,
+    wpm: elapsedMinutes > 0 ? Math.round((correct / 5) / elapsedMinutes) : 0,
+    accuracy: typed.length ? correct / typed.length : 1,
+  };
+}
+
+function renderTypingTestTarget() {
+  const typed = [...ui.typingTestInput.value];
+  const target = [...TYPING_TEST_PASSAGE];
+  const fragment = document.createDocumentFragment();
+  target.forEach((character, index) => {
+    const letter = document.createElement("span");
+    letter.textContent = character;
+    if (index < typed.length) {
+      if (typed[index] === character) {
+        letter.className = "typing-test-letter typing-test-letter--typed";
+      } else {
+        letter.className = "typing-test-letter typing-test-letter--wrong";
+        letter.dataset.entered = typed[index];
+      }
+    } else {
+      letter.className = "typing-test-letter typing-test-letter--ghost";
+    }
+    if (!state.typingTestFinished && index === typed.length) {
+      letter.classList.add("typing-test-letter--current");
+    }
+    fragment.append(letter);
+  });
+  ui.typingTestPassage.replaceChildren(fragment);
+}
+
+function alignTypingTestPassageToNotebook() {
+  const editor = ui.typingTestPassage.parentElement;
+  const firstLetter = ui.typingTestPassage.querySelector(".typing-test-letter");
+  if (!editor || !firstLetter || $("screen-typing-test").hidden) return;
+
+  editor.style.setProperty("--typing-test-line-shift", "0px");
+  const range = document.createRange();
+  range.selectNodeContents(firstLetter);
+  const glyphRect = range.getBoundingClientRect();
+  if (!glyphRect.height) return;
+
+  const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  const bodyStyle = getComputedStyle(document.body);
+  const cssLengthToPixels = (value) => {
+    const amount = Number.parseFloat(value);
+    return value.trim().endsWith("rem") ? amount * rootFontSize : amount;
+  };
+  const ruleGap = cssLengthToPixels(bodyStyle.getPropertyValue("--notebook-rule-gap"));
+  const firstRule = cssLengthToPixels(bodyStyle.getPropertyValue("--notebook-first-rule"));
+  if (!ruleGap || !firstRule) return;
+  const glyphBottom = glyphRect.bottom + window.scrollY + editor.scrollTop;
+  const ruleIndex = Math.max(0, Math.ceil((glyphBottom + 2 - firstRule) / ruleGap));
+  const ruleBelowGlyph = firstRule + ruleIndex * ruleGap;
+  const shift = ruleBelowGlyph - glyphBottom - 2;
+  editor.style.setProperty("--typing-test-line-shift", `${shift}px`);
+}
+
+function updateTypingTestDisplay(now = performance.now()) {
+  const metrics = typingTestMetrics(now);
+  ui.typingTestWpm.textContent = String(metrics.wpm);
+  ui.typingTestAccuracy.textContent = `${Math.round(metrics.accuracy * 100)}%`;
+  return metrics;
+}
+
+function finishTypingTest(now = performance.now()) {
+  if (!state.typingTestActive) return;
+  state.typingTestFinished = true;
+  state.typingTestFinishedAt = now;
+  stopTypingTest();
+  ui.typingTestInput.disabled = true;
+  ui.typingTestStart.disabled = false;
+  ui.typingTestStart.textContent = "Try again";
+  ui.typingTestNext.textContent = state.typingTestNextScreen === "choose"
+    ? "Continue to lesson choice"
+    : "Continue to camera setup";
+  ui.typingTestNext.hidden = false;
+  updateTypingTestDisplay(now);
+  renderTypingTestTarget();
+  ui.typingTestStatus.textContent = `Passage complete! ${ui.typingTestWpm.textContent} WPM at ${ui.typingTestAccuracy.textContent} accuracy.`;
+}
+
+function startTypingTest(preserveInput = false) {
+  stopTypingTest();
+  state.typingTestFinished = false;
+  state.typingTestFinishedAt = null;
+  state.typingTestStartedAt = performance.now();
+  state.typingTestActive = true;
+  if (!preserveInput) ui.typingTestInput.value = "";
+  ui.typingTestInput.disabled = false;
+  ui.typingTestStart.disabled = true;
+  ui.typingTestStart.textContent = "Test in progress";
+  ui.typingTestNext.hidden = true;
+  ui.typingTestStatus.textContent = "Go! Keep a steady pace.";
+  updateTypingTestDisplay(state.typingTestStartedAt);
+  renderTypingTestTarget();
+  if (!preserveInput) ui.typingTestInput.focus({ preventScroll: true });
+  typingTestWpmIntervalId = setInterval(updateTypingTestDisplay, 1000);
+}
+
+function resetTypingTest() {
+  stopTypingTest();
+  state.typingTestStartedAt = null;
+  state.typingTestFinishedAt = null;
+  state.typingTestFinished = false;
+  ui.typingTestInput.value = "";
+  ui.typingTestInput.disabled = false;
+  ui.typingTestStart.disabled = false;
+  ui.typingTestStart.textContent = "Start test";
+  ui.typingTestNext.hidden = true;
+  ui.typingTestStatus.textContent = "Click Start test, or just start typing.";
+  updateTypingTestDisplay();
+  renderTypingTestTarget();
+  requestAnimationFrame(alignTypingTestPassageToNotebook);
+}
+
+function openTypingTest(nextScreen) {
+  state.typingTestNextScreen = nextScreen;
+  showScreen("typing-test");
+}
+
+function initTypingTestScreen() {
+  window.addEventListener("resize", () => requestAnimationFrame(alignTypingTestPassageToNotebook));
+  ui.typingTestStart.addEventListener("click", () => startTypingTest());
+  ui.typingTestInput.addEventListener("input", () => {
+    const typed = [...ui.typingTestInput.value];
+    if (typed.length > TYPING_TEST_PASSAGE.length) {
+      ui.typingTestInput.value = typed.slice(0, TYPING_TEST_PASSAGE.length).join("");
+    }
+    if (!state.typingTestActive && !state.typingTestFinished && ui.typingTestInput.value.length) {
+      startTypingTest(true);
+    }
+    if (state.typingTestActive) updateTypingTestDisplay();
+    if (state.typingTestActive && [...ui.typingTestInput.value].length >= TYPING_TEST_PASSAGE.length) {
+      finishTypingTest();
+      return;
+    }
+    renderTypingTestTarget();
+  });
+  ui.typingTestInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") event.preventDefault();
+  });
+  ui.typingTestNext.addEventListener("click", () => {
+    if (state.typingTestNextScreen === "choose") showScreen("choose");
+    else openCameraSetup();
+  });
+  screenEnterHandlers["typing-test"] = resetTypingTest;
+}
 
 // ---------- Messages ----------
 
@@ -239,27 +602,41 @@ const CAMERA_ERROR_TEXT = {
 
 // ---------- Camera ----------
 
+let cameraRequestId = 0;
+
 async function startCamera(deviceId) {
+  const requestId = ++cameraRequestId;
   closeCamera(state.stream);
   state.stream = null;
   showMessage(ui.setupError, "");
   ui.setupStatus.textContent = "Starting camera...";
+  let stream;
   try {
-    state.stream = await openCamera(deviceId);
+    stream = await openCamera(deviceId);
   } catch (error) {
+    if (requestId !== cameraRequestId) return;
     const kind = error instanceof CameraError ? error.kind : "unknown";
     const extra = kind === "unknown" ? ` (${error.message})` : "";
     showMessage(ui.setupError, CAMERA_ERROR_TEXT[kind] + extra);
     ui.setupStatus.textContent = "Camera is off.";
     fillCameraPicker(ui.cameraPicker, await listCameras().catch(() => []), null);
+    updateSetupWizardControls();
     return;
   }
+  if (requestId !== cameraRequestId) {
+    closeCamera(stream);
+    return;
+  }
+  state.stream = stream;
   ui.video.srcObject = state.stream;
   ui.stage.classList.add("has-video");
   await ui.video.play().catch(() => {});
   const activeId = deviceIdOf(state.stream);
   rememberCamera(activeId);
-  fillCameraPicker(ui.cameraPicker, await listCameras(), activeId);
+  const cameras = await listCameras();
+  if (requestId !== cameraRequestId) return;
+  fillCameraPicker(ui.cameraPicker, cameras, activeId);
+  updateSetupWizardControls();
   ui.setupStatus.textContent = state.trackerReady ? "Tracking hands." : "Camera on. Loading hand tracking...";
 }
 
@@ -267,14 +644,19 @@ async function startCamera(deviceId) {
 async function refreshCameraPicker() {
   const cameras = await listCameras().catch(() => []);
   fillCameraPicker(ui.cameraPicker, cameras, deviceIdOf(state.stream));
+  updateSetupWizardControls();
 }
 
 // ---------- Hand tracking ----------
 
 async function startTracking() {
+  if (state.tracker) {
+    state.tracker.start();
+    return;
+  }
   state.tracker = new HandTracker({
     video: ui.video,
-    getSettings: () => state.settings,
+    getSettings: () => ({ ...state.settings, rotated: state.cameraViewRotated }),
     onFrame: (frame) => pipeline.ingestFrame(frame, "live"),
   });
   try {
@@ -292,8 +674,702 @@ async function startTracking() {
     return;
   }
   state.trackerReady = true;
+  if (!state.setupStarted) return;
   state.tracker.start();
   if (state.stream) ui.setupStatus.textContent = "Tracking hands.";
+}
+
+function openCameraSetup() {
+  clearSavedCalibration();
+  state.dashboardSetupComplete = false;
+  showScreen("setup");
+  if (state.setupStarted) return;
+  state.setupStarted = true;
+  if (!cameraAllowedHere()) {
+    showMessage(ui.globalError, CAMERA_ERROR_TEXT.insecure);
+    ui.setupStatus.textContent = "Camera is off.";
+    fillCameraPicker(ui.cameraPicker, [], null);
+    return;
+  }
+  startCamera(rememberedCamera());
+  startTracking();
+}
+
+function closeDashboardCameraPreview() {
+  state.dashboardPreviewRequestId += 1;
+  closeCamera(state.dashboardPreviewStream);
+  state.dashboardPreviewStream = null;
+  ui.dashboardPreviewVideo.srcObject = null;
+  dashboardPreviewOverlay.setKeyboardGrid(null);
+  ui.dashboardCameraPreview.disabled = false;
+}
+
+async function openDashboardCameraPreview() {
+  if (ui.dashboardCameraPreviewDialog.open || ui.dashboardCameraPreview.disabled) return;
+  ui.dashboardCameraPreviewDialog.showModal();
+  ui.dashboardCameraPreview.disabled = true;
+  ui.dashboardPreviewStatus.textContent = "Starting camera…";
+  dashboardPreviewOverlay.setHandsVisible(false);
+  dashboardPreviewOverlay.setRotated(state.cameraViewRotated);
+  dashboardPreviewOverlay.setFlipped(state.settings.flipView);
+  dashboardPreviewOverlay.setKeyboardGrid(state.calibration?.keyboardGrid ?? null);
+  const requestId = ++state.dashboardPreviewRequestId;
+  try {
+    const stream = await openCamera(rememberedCamera());
+    if (requestId !== state.dashboardPreviewRequestId || !ui.dashboardCameraPreviewDialog.open) {
+      closeCamera(stream);
+      return;
+    }
+    state.dashboardPreviewStream = stream;
+    ui.dashboardPreviewVideo.classList.toggle("is-rotated", state.cameraViewRotated);
+    ui.dashboardPreviewVideo.classList.toggle("is-flipped", state.settings.flipView);
+    ui.dashboardPreviewVideo.srcObject = stream;
+    await ui.dashboardPreviewVideo.play().catch(() => {});
+    // Re-draw after metadata is available so the mapping matches the camera's
+    // actual aspect ratio and stays aligned with a rotated preview.
+    dashboardPreviewOverlay.setKeyboardGrid(state.calibration?.keyboardGrid ?? null);
+    if (requestId === state.dashboardPreviewRequestId && ui.dashboardCameraPreviewDialog.open) {
+      ui.dashboardPreviewStatus.textContent = "Live camera preview.";
+    }
+  } catch (error) {
+    if (requestId === state.dashboardPreviewRequestId) {
+      ui.dashboardPreviewStatus.textContent = `Camera preview unavailable. ${error.message}`;
+    }
+  } finally {
+    if (requestId === state.dashboardPreviewRequestId) ui.dashboardCameraPreview.disabled = false;
+  }
+}
+
+function leaveCurrentCameraFlow() {
+  if (collection) cancelCollection();
+  if (ui.dashboardCameraPreviewDialog.open) ui.dashboardCameraPreviewDialog.close();
+  closeDashboardCameraPreview();
+  ++cameraRequestId;
+  closeCamera(state.stream);
+  state.stream = null;
+  ui.video.srcObject = null;
+  ui.stage.classList.remove("has-video");
+  state.tracker?.stop();
+  state.setupStarted = false;
+  state.exerciseActive = false;
+  replayer.stop();
+}
+
+function openDashboard() {
+  if (state.screen !== "landing") leaveCurrentCameraFlow();
+  showScreen("dashboard");
+}
+
+function updateDashboardChecklist() {
+  const complete = {
+    hands: Boolean(state.calibration?.baselines),
+    labels: ui.setupLabelsConfirmed.checked,
+    keyboard: ui.setupKeyboardConfirmed.checked,
+    keys: Boolean(state.calibration?.keyboardGrid),
+  };
+  for (const item of ui.dashboardChecks) {
+    const done = complete[item.dataset.dashboardCheck];
+    item.classList.toggle("is-complete", done);
+    item.querySelector(".dashboard-check-state").textContent = done ? "Ready" : "To do";
+    item.setAttribute("aria-label", `${item.querySelector(".dashboard-check-copy strong").textContent}: ${done ? "ready" : "to do"}`);
+  }
+  const allComplete = Object.values(complete).every(Boolean);
+  const panel = ui.dashboardStartTitle.closest(".dashboard-start-panel");
+  panel.classList.toggle("is-camera-ready", allComplete);
+  ui.dashboardStartTitle.textContent = allComplete ? "Camera is all set up!" : "Let's get you set up.";
+  ui.dashboardStartDescription.textContent = allComplete
+    ? "Your camera and keyboard are ready for personalized practice."
+    : "Once HighType can see your keyboard, you'll be all set for personalized practice.";
+  ui.dashboardCameraStart.textContent = allComplete ? "Recalibrate camera" : "Set up camera";
+  ui.dashboardCameraStart.classList.toggle("primary", !allComplete);
+  ui.dashboardCameraStart.classList.toggle("secondary", allComplete);
+  ui.dashboardCameraPreview.hidden = !allComplete;
+}
+
+function updateDashboardFirstVisit() {
+  const needsSetup = !state.dashboardSetupComplete;
+  $("screen-dashboard").classList.toggle("is-first-setup", needsSetup);
+  ui.dashboardFirstVisit.hidden = !needsSetup;
+}
+
+function setDashboardView(view, focusHeading = false) {
+  const lessonsVisible = view === "lessons";
+  ui.dashboardOverview.hidden = lessonsVisible;
+  ui.dashboardLessonsView.hidden = !lessonsVisible;
+  for (const button of ui.dashboardViewButtons) {
+    if (button.dataset.dashboardView === view) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  }
+  if (focusHeading) {
+    const heading = lessonsVisible ? $("dashboard-lessons-title") : $("dashboard-title");
+    heading.focus({ preventScroll: true });
+  }
+}
+
+function returnToLanding(event, anchorId = null) {
+  event.preventDefault();
+  if (state.screen === "landing") {
+    if (anchorId) {
+      document.getElementById(anchorId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      resetLandingAnimations();
+      requestAnimationFrame(startLandingAnimations);
+    }
+    return;
+  }
+  leaveCurrentCameraFlow();
+  resetLandingAnimations();
+  showScreen("landing").then(() => {
+    startLandingAnimations();
+    if (anchorId) requestAnimationFrame(() => document.getElementById(anchorId)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  });
+}
+
+function initLandingScreen() {
+  screenEnterHandlers.dashboard = () => {
+    updateDashboardChecklist();
+    renderDashboardFingerAccuracy(ui.dashboardFingerAccuracy, ui.dashboardFingerAccuracyNote, storage.loadHistory());
+    renderLevelList(ui.dashboardLevelList);
+    setDashboardView("overview");
+    updateDashboardFirstVisit();
+  };
+  for (const button of ui.dashboardViewButtons) {
+    button.addEventListener("click", () => setDashboardView(button.dataset.dashboardView, true));
+  }
+  document.querySelector(".app-header .logo").addEventListener("click", returnToLanding);
+  document.querySelector("#landing-nav-how").addEventListener("click", (event) => returnToLanding(event, "how-it-works"));
+  ui.landingNavTest.addEventListener("click", (event) => {
+    event.preventDefault();
+    if (state.screen !== "landing") leaveCurrentCameraFlow();
+    openTypingTest("setup");
+  });
+  document.querySelector("#landing-nav-about").addEventListener("click", (event) => {
+    event.preventDefault();
+    if (state.screen !== "landing") leaveCurrentCameraFlow();
+    showScreen("about");
+  });
+  ui.dashboardCameraStart.addEventListener("click", openCameraSetup);
+  ui.dashboardCameraPreview.addEventListener("click", openDashboardCameraPreview);
+  ui.dashboardCameraPreviewClose.addEventListener("click", () => ui.dashboardCameraPreviewDialog.close());
+  ui.dashboardCameraPreviewDialog.addEventListener("close", closeDashboardCameraPreview);
+  ui.dashboardCameraPreviewDialog.addEventListener("click", (event) => {
+    if (event.target === ui.dashboardCameraPreviewDialog) ui.dashboardCameraPreviewDialog.close();
+  });
+  const landingStage = document.querySelector(".landing-stage");
+  for (const button of [ui.landingNavStart, ui.landingFinalStart]) {
+    button.addEventListener("click", openDashboard);
+  }
+  for (const button of [ui.landingSkip, ...document.querySelectorAll(".hero-narrative-try")]) {
+    button.addEventListener("click", openDashboard);
+  }
+
+  const appHeader = document.querySelector(".app-header");
+  const storySections = [...document.querySelectorAll(".landing-story-section")];
+  const speedStorySentence = "... but our fingers don't all keep up at the same pace. Hightype is here to fix that.";
+  const storyCopy = [
+    speedStorySentence,
+    speedStorySentence,
+    speedStorySentence,
+    "Most typing trainers measure keystrokes and speed, but they can’t see which fingers you use or how your hands move.",
+  ];
+  let nextStoryCopy = 0;
+  const storyGroups = storySections.map((section) => {
+    const targets = [...section.querySelectorAll(".hero-info-typed")];
+    const copy = storyCopy.slice(nextStoryCopy, nextStoryCopy + targets.length);
+    nextStoryCopy += targets.length;
+    return { section, targets, copy };
+  });
+  const activeStorySections = new Set();
+  let storyGeneration = 0;
+  const storyObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      if (activeStorySections.has(entry.target)) continue;
+      storyObserver.unobserve(entry.target);
+      const group = storyGroups.find((item) => item.section === entry.target);
+      if (group) {
+        activeStorySections.add(entry.target);
+        typeStorySection(group);
+      }
+    }
+  }, { threshold: 0.35 });
+  const typeStorySection = async ({ section, targets, copy }) => {
+    const generation = storyGeneration;
+    const isCurrent = () => generation === storyGeneration;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const typingDelay = (character, target) => {
+      const wordsPerMinute = Number(target.dataset.speedWpm);
+      const lettersPerSecond = Number(target.dataset.speedLps);
+      if (wordsPerMinute || lettersPerSecond) {
+        const baseDelay = wordsPerMinute ? 60000 / (wordsPerMinute * 5) : 1000 / lettersPerSecond;
+        if (character === " ") return baseDelay * (1.2 + Math.random() * 0.2);
+        if (/[.!?]/.test(character)) return baseDelay * (2 + Math.random() * 0.5);
+        if (/[,;:—]/.test(character)) return baseDelay * (1.6 + Math.random() * 0.3);
+        return baseDelay * (0.9 + Math.random() * 0.2);
+      }
+      const variation = 28 + Math.random() * 48;
+      if (character === " ") return 95 + Math.random() * 110;
+      if (/[.!?]/.test(character)) return 430 + Math.random() * 240;
+      if (/[,;:—]/.test(character)) return 260 + Math.random() * 180;
+      if (character === "\n") return 180 + Math.random() * 120;
+      return variation;
+    };
+    const typeTarget = async (target, index) => {
+      const caret = target.nextElementSibling;
+      const wpmReadout = caret.nextElementSibling;
+      target.closest(".hero-story-copy").dataset.ghost = copy[index];
+      caret.classList.add("is-active");
+      if (reducedMotion) {
+        target.textContent = copy[index];
+      } else {
+        const typeInto = async (element, text) => {
+          for (const character of text) {
+            if (!isCurrent()) return false;
+            element.textContent += character;
+            await new Promise((resolve) => setTimeout(resolve, typingDelay(character, target)));
+          }
+          return isCurrent();
+        };
+        const typoPlan = index === 0
+          ? { word: "fingers", mistake: "fingres" }
+          : index === 2
+            ? { word: "same", mistake: "smae" }
+            : null;
+        const typoStart = typoPlan ? copy[index].indexOf(typoPlan.word) : -1;
+        if (typoPlan && typoStart >= 0) {
+          if (!await typeInto(target, copy[index].slice(0, typoStart)) || !isCurrent()) return;
+          const mistake = document.createElement("span");
+          mistake.className = "speed-story-mistake";
+          target.append(mistake);
+          if (!await typeInto(mistake, typoPlan.mistake) || !isCurrent()) return;
+          await new Promise((resolve) => setTimeout(resolve, 180));
+          if (!isCurrent()) return;
+          while (mistake.textContent.length) {
+            mistake.textContent = mistake.textContent.slice(0, -1);
+            await new Promise((resolve) => setTimeout(resolve, 36));
+            if (!isCurrent()) return;
+          }
+          mistake.remove();
+          if (!await typeInto(target, typoPlan.word + copy[index].slice(typoStart + typoPlan.word.length))) return;
+        } else {
+          if (!await typeInto(target, copy[index])) return;
+        }
+      }
+      if (!isCurrent()) return;
+      caret.classList.remove("is-active");
+      if (wpmReadout && (target.dataset.speedWpm || target.dataset.speedLps)) {
+        const wordsPerMinute = Number(target.dataset.speedWpm)
+          || Math.round(Number(target.dataset.speedLps) * 60 / 5);
+        wpmReadout.textContent = `${wordsPerMinute} WPM`;
+        wpmReadout.classList.add("is-visible");
+      }
+    };
+    if (section.id === "how-it-works") {
+      await Promise.all(targets.map((target, index) => typeTarget(target, index)));
+    } else {
+      for (let index = 0; index < targets.length; index += 1) {
+        if (!isCurrent()) return;
+        await typeTarget(targets[index], index);
+        if (!isCurrent()) return;
+        if (!reducedMotion && index < targets.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, index === 0 ? 220 : 140));
+        }
+      }
+    }
+  };
+  for (const section of storySections) storyObserver.observe(section);
+  const leftHeroCardCarousel = document.querySelector(".hero-card-carousel");
+  const heroRecordDurations = ["15 seconds", "30 seconds", "60 seconds", "2 minutes"];
+  const randomizeHeroRecord = (recordCard) => {
+    if (!recordCard) return;
+    const recordNumber = recordCard.querySelector(".hero-record-number");
+    const durationLabel = recordCard.querySelector(".hero-record-duration");
+    if (!recordNumber || !durationLabel) return;
+    const previousWpm = Number(recordNumber.textContent);
+    let wpm;
+    do {
+      wpm = Math.floor(Math.random() * 81) + 90;
+    } while (wpm === previousWpm);
+    const previousDuration = durationLabel.textContent;
+    const availableDurations = heroRecordDurations.filter((duration) => duration !== previousDuration);
+    const duration = availableDurations[Math.floor(Math.random() * availableDurations.length)];
+    recordNumber.textContent = String(wpm);
+    durationLabel.textContent = duration;
+    recordCard.setAttribute("aria-label", `New record, ${wpm} words per minute in ${duration}`);
+    const graphLine = recordCard.querySelector(".hero-record-graph-line");
+    const graphDot = recordCard.querySelector(".hero-record-graph-dot");
+    if (graphLine && graphDot) {
+      const graphX = [6, 23, 39, 57, 73, 96];
+      const startY = 26 + Math.random() * 15;
+      const endY = startY + (Math.random() - 0.5) * 6;
+      const graphPoints = graphX.map((x, index) => {
+        if (index === 0) return { x, y: Number(startY.toFixed(1)) };
+        if (index === graphX.length - 1) return { x, y: Number(endY.toFixed(1)) };
+        const progress = index / (graphX.length - 1);
+        const baseline = startY + (endY - startY) * progress;
+        const y = Math.max(8, Math.min(52, baseline + (Math.random() - 0.5) * 24));
+        return { x, y: Number(y.toFixed(1)) };
+      });
+      graphLine.setAttribute("d", graphPoints.map(({ x, y }, index) => `${index ? "L" : "M"}${x} ${y}`).join(" "));
+      const lastGraphPoint = graphPoints[graphPoints.length - 1];
+      graphDot.setAttribute("cx", String(lastGraphPoint.x));
+      graphDot.setAttribute("cy", String(lastGraphPoint.y));
+    }
+  };
+  const fingerCueOptions = [
+    { finger: "Left pinky", letter: "A" },
+    { finger: "Left ring", letter: "S" },
+    { finger: "Left middle", letter: "D" },
+    { finger: "Left index", letter: "F" },
+    { finger: "Left index", letter: "G" },
+    { finger: "Right index", letter: "H" },
+    { finger: "Right index", letter: "J" },
+    { finger: "Right middle", letter: "K" },
+    { finger: "Right ring", letter: "L" },
+    { finger: "Right pinky", letter: "P" },
+  ];
+  const updateHeroHandGraphic = (handGraphic, finger) => {
+    if (!handGraphic) return;
+    const handSide = finger.startsWith("Left") ? "L" : "R";
+    const targetDigit = finger.split(" ").pop().toLowerCase();
+    handGraphic.setAttribute("data-target", targetDigit);
+    handGraphic.setAttribute("data-side", handSide);
+    handGraphic.querySelector(".hero-hand-side").textContent = handSide;
+  };
+  const randomizeHeroFingerCue = (fingerCard) => {
+    if (!fingerCard) return;
+    const fingerName = fingerCard.querySelector(".hero-finger-name");
+    const keycap = fingerCard.querySelector(".hero-keycap");
+    const handGraphic = fingerCard.querySelector(".hero-finger-hand");
+    if (!fingerName || !keycap || !handGraphic) return;
+    const previousFinger = fingerName.textContent;
+    const previousLetter = keycap.textContent;
+    const options = fingerCueOptions.filter((cue) => cue.finger !== previousFinger || cue.letter !== previousLetter);
+    const cue = options[Math.floor(Math.random() * options.length)];
+    fingerName.textContent = cue.finger;
+    keycap.textContent = cue.letter;
+    updateHeroHandGraphic(handGraphic, cue.finger);
+    fingerCard.setAttribute("aria-label", `Finger cue: ${cue.finger} finger, ${cue.letter}`);
+  };
+  const handDriftOptions = [
+    { message: "Left hand is drifting too far right", correction: "← SHIFT LEFT" },
+    { message: "Right hand is drifting too far left", correction: "SHIFT RIGHT →" },
+  ];
+  const randomizeHeroDrift = (driftCard) => {
+    if (!driftCard) return;
+    const message = driftCard.querySelector(".hero-drift-message");
+    const correction = driftCard.querySelector(".hero-drift-correction");
+    if (!message || !correction) return;
+    const options = handDriftOptions.filter((cue) => cue.message !== message.textContent);
+    const cue = options[Math.floor(Math.random() * options.length)];
+    message.textContent = cue.message;
+    correction.textContent = cue.correction;
+    driftCard.setAttribute("aria-label", `Hand position cue: ${cue.message}`);
+  };
+  const underusedFingerOptions = [
+    "Left pinky", "Left ring", "Left middle", "Left index",
+    "Right index", "Right middle", "Right ring", "Right pinky",
+  ];
+  const randomizeHeroUnderusedFinger = (underusedCard) => {
+    if (!underusedCard) return;
+    const fingerName = underusedCard.querySelector(".hero-underused-name");
+    const handGraphic = underusedCard.querySelector(".hero-finger-hand");
+    if (!fingerName || !handGraphic) return;
+    const options = underusedFingerOptions.filter((finger) => finger !== fingerName.textContent);
+    const finger = options[Math.floor(Math.random() * options.length)];
+    fingerName.textContent = finger;
+    updateHeroHandGraphic(handGraphic, finger);
+    underusedCard.setAttribute("aria-label", `Finger use cue: ${finger} is not being utilized enough`);
+  };
+  const restingPositionOptions = [
+    { finger: "Left pinky", key: "A" }, { finger: "Left ring", key: "S" },
+    { finger: "Left middle", key: "D" }, { finger: "Left index", key: "F" },
+    { finger: "Right index", key: "J" }, { finger: "Right middle", key: "K" },
+    { finger: "Right ring", key: "L" }, { finger: "Right pinky", key: ";" },
+  ];
+  const randomizeHeroRestingPosition = (restCard) => {
+    if (!restCard) return;
+    const fingerName = restCard.querySelector(".hero-rest-finger");
+    const keycap = restCard.querySelector(".hero-rest-key");
+    const handGraphic = restCard.querySelector(".hero-finger-hand");
+    if (!fingerName || !keycap || !handGraphic) return;
+    const options = restingPositionOptions.filter((cue) => cue.finger !== fingerName.textContent || cue.key !== keycap.textContent);
+    const cue = options[Math.floor(Math.random() * options.length)];
+    fingerName.textContent = cue.finger;
+    keycap.textContent = cue.key;
+    updateHeroHandGraphic(handGraphic, cue.finger);
+    restCard.setAttribute("aria-label", `Resting position cue: ${cue.finger} finger should rest on ${cue.key}`);
+  };
+  const randomizeHeroSet = (heroCardSet) => {
+    if (!heroCardSet) return;
+    randomizeHeroRecord(heroCardSet.querySelector(".hero-card--record"));
+    for (const fingerCard of heroCardSet.querySelectorAll(".hero-card--finger")) {
+      randomizeHeroFingerCue(fingerCard);
+    }
+    randomizeHeroDrift(heroCardSet.querySelector(".hero-card--drift"));
+    randomizeHeroUnderusedFinger(heroCardSet.querySelector(".hero-card--underused"));
+    randomizeHeroRestingPosition(heroCardSet.querySelector(".hero-card--rest"));
+  };
+  randomizeHeroSet(leftHeroCardCarousel?.querySelector(".hero-card-set"));
+  const rightHeroCardCarousel = leftHeroCardCarousel?.cloneNode(true);
+  if (rightHeroCardCarousel) {
+    rightHeroCardCarousel.classList.add("hero-card-carousel--right");
+    rightHeroCardCarousel.setAttribute("aria-hidden", "true");
+    randomizeHeroSet(rightHeroCardCarousel.querySelector(".hero-card-set"));
+    leftHeroCardCarousel.after(rightHeroCardCarousel);
+  }
+  const heroCardTrack = leftHeroCardCarousel?.querySelector(".hero-card-track");
+  const rightHeroCardTrack = rightHeroCardCarousel?.querySelector(".hero-card-track");
+  const firstHeroCardSet = heroCardTrack?.querySelector(".hero-card-set");
+  for (const track of [heroCardTrack, rightHeroCardTrack]) {
+    const firstSet = track?.querySelector(".hero-card-set");
+    if (track && firstSet) {
+      while (track.children.length < 24) {
+        const repeatedSet = firstSet.cloneNode(true);
+        repeatedSet.setAttribute("aria-hidden", "true");
+        randomizeHeroSet(repeatedSet);
+        track.append(repeatedSet);
+      }
+    }
+  }
+  let carouselStarted = false;
+  let carouselRun = 0;
+  let carouselFrameId = null;
+  let skipCarouselResume = false;
+  let removeCarouselResizeListener = () => {};
+  const resetHeroCardCarousel = () => {
+    carouselRun += 1;
+    carouselStarted = false;
+    skipCarouselResume = true;
+    if (carouselFrameId !== null) cancelAnimationFrame(carouselFrameId);
+    carouselFrameId = null;
+    removeCarouselResizeListener();
+    removeCarouselResizeListener = () => {};
+    heroCardTrack?.style.removeProperty("transform");
+    rightHeroCardTrack?.style.removeProperty("transform");
+  };
+  const startHeroCardCarousel = () => {
+    if (carouselStarted) return;
+    if (carouselStarted || !heroCardTrack || !rightHeroCardTrack || !firstHeroCardSet) return;
+    carouselStarted = true;
+    const run = ++carouselRun;
+
+    const burstSeconds = 0.5;
+    const accelerationSeconds = 0.2;
+    const slowdownSeconds = 2;
+    const fastSetsPerSecond = 28;
+    const baseSetsPerSecond = 3 / 16;
+    const slowdownDistance = 8;
+    // Ease into top speed quickly, then keep the burst phase at its existing half-second total.
+    const burstDistance = fastSetsPerSecond * (burstSeconds - accelerationSeconds / 2);
+    const settledDistance = burstDistance + slowdownDistance;
+    const slowdownPower = ((fastSetsPerSecond - baseSetsPerSecond) * slowdownSeconds) /
+      (slowdownDistance - baseSetsPerSecond * slowdownSeconds) - 1;
+    const slowdownExtraDistance = (fastSetsPerSecond - baseSetsPerSecond) *
+      slowdownSeconds / (slowdownPower + 1);
+    let cardSetHeight = firstHeroCardSet.getBoundingClientRect().height;
+    let cardSetWidth = firstHeroCardSet.getBoundingClientRect().width;
+    let leftCarouselWidth = leftHeroCardCarousel.getBoundingClientRect().width;
+    let rightCarouselHeight = rightHeroCardCarousel.getBoundingClientRect().height;
+    let horizontalMode = window.matchMedia("(max-width: 1500px)").matches;
+    let leftOffset = horizontalMode ? -leftCarouselWidth - cardSetWidth : -24 * cardSetHeight;
+    let rightOffset = horizontalMode ? leftCarouselWidth : rightCarouselHeight;
+    let previousTravelledSets = 0;
+    const measureCarousel = () => {
+      const measuredHeight = firstHeroCardSet.getBoundingClientRect().height;
+      const measuredWidth = firstHeroCardSet.getBoundingClientRect().width;
+      const measuredCarouselWidth = leftHeroCardCarousel.getBoundingClientRect().width;
+      const measuredRightHeight = rightHeroCardCarousel.getBoundingClientRect().height;
+      if (measuredHeight > 0) cardSetHeight = measuredHeight;
+      if (measuredWidth > 0) cardSetWidth = measuredWidth;
+      if (measuredCarouselWidth > 0) leftCarouselWidth = measuredCarouselWidth;
+      if (measuredRightHeight > 0) rightCarouselHeight = measuredRightHeight;
+    };
+    window.addEventListener("resize", measureCarousel);
+    removeCarouselResizeListener = () => window.removeEventListener("resize", measureCarousel);
+
+    let startTime = performance.now();
+    let pausedAt = null;
+    const moveCards = (now) => {
+      if (run !== carouselRun) return;
+      if (document.querySelector("#screen-landing").hidden) {
+        pausedAt = now;
+        carouselFrameId = null;
+        return;
+      }
+      const elapsed = Math.max(0, (now - startTime) / 1000);
+      let traveledSets;
+      if (elapsed < accelerationSeconds) {
+        const progress = elapsed / accelerationSeconds;
+        const easedDistance = progress ** 3 - 0.5 * progress ** 4;
+        traveledSets = fastSetsPerSecond * accelerationSeconds * easedDistance;
+      } else if (elapsed < burstSeconds) {
+        traveledSets = fastSetsPerSecond * accelerationSeconds * 0.5 +
+          fastSetsPerSecond * (elapsed - accelerationSeconds);
+      } else if (elapsed < burstSeconds + slowdownSeconds) {
+        const slowElapsed = elapsed - burstSeconds;
+        const remaining = 1 - slowElapsed / slowdownSeconds;
+        const traveled = baseSetsPerSecond * slowElapsed + slowdownExtraDistance *
+          (1 - remaining ** (slowdownPower + 1));
+        traveledSets = burstDistance + traveled;
+      } else {
+        const baseElapsed = elapsed - burstSeconds - slowdownSeconds;
+        traveledSets = settledDistance + baseSetsPerSecond * baseElapsed;
+      }
+      const isHorizontal = window.matchMedia("(max-width: 1500px)").matches;
+      if (isHorizontal !== horizontalMode) {
+        horizontalMode = isHorizontal;
+        leftOffset = isHorizontal ? -cardSetWidth : -2 * cardSetHeight;
+        rightOffset = isHorizontal ? 0 : -2 * cardSetHeight;
+        previousTravelledSets = traveledSets;
+      }
+      const distanceInSets = Math.max(0, traveledSets - previousTravelledSets);
+      previousTravelledSets = traveledSets;
+      if (horizontalMode) {
+        leftOffset += distanceInSets * cardSetWidth;
+        rightOffset -= distanceInSets * cardSetWidth;
+        while (leftOffset >= -cardSetWidth) {
+          const recycledSet = heroCardTrack.lastElementChild;
+          randomizeHeroSet(recycledSet);
+          heroCardTrack.prepend(recycledSet);
+          leftOffset -= cardSetWidth;
+        }
+        while (rightOffset <= -cardSetWidth) {
+          const recycledSet = rightHeroCardTrack.firstElementChild;
+          randomizeHeroSet(recycledSet);
+          rightHeroCardTrack.append(recycledSet);
+          rightOffset += cardSetWidth;
+        }
+        heroCardTrack.style.transform = `translate3d(${leftOffset}px, 0, 0)`;
+        rightHeroCardTrack.style.transform = `translate3d(${rightOffset}px, 0, 0)`;
+      } else {
+        leftOffset += distanceInSets * cardSetHeight;
+        rightOffset -= distanceInSets * cardSetHeight;
+        while (leftOffset >= -2 * cardSetHeight) {
+          const recycledSet = heroCardTrack.lastElementChild;
+          randomizeHeroSet(recycledSet);
+          heroCardTrack.prepend(recycledSet);
+          leftOffset -= cardSetHeight;
+        }
+        while (rightOffset <= -2 * cardSetHeight) {
+          const recycledSet = rightHeroCardTrack.firstElementChild;
+          randomizeHeroSet(recycledSet);
+          rightHeroCardTrack.append(recycledSet);
+          rightOffset += cardSetHeight;
+        }
+        heroCardTrack.style.transform = `translate3d(0, ${leftOffset}px, 0)`;
+        rightHeroCardTrack.style.transform = `translate3d(0, ${rightOffset}px, 0)`;
+      }
+      carouselFrameId = requestAnimationFrame(moveCards);
+    };
+    screenEnterHandlers.landing = () => {
+      if (skipCarouselResume) {
+        skipCarouselResume = false;
+        return;
+      }
+      if (pausedAt === null) return;
+      startTime += performance.now() - pausedAt;
+      pausedAt = null;
+      measureCarousel();
+      carouselFrameId = requestAnimationFrame(moveCards);
+    };
+    carouselFrameId = requestAnimationFrame(moveCards);
+  };
+  const updateHeaderShadow = () => {
+    const landingVisible = !document.querySelector("#screen-landing").hidden;
+    const pastHero = landingVisible && landingStage.getBoundingClientRect().bottom <= appHeader.offsetHeight;
+    appHeader.classList.toggle("is-scrolled", pastHero);
+    if (pastHero) $("landing-nav-how").setAttribute("aria-current", "location");
+    else $("landing-nav-how").removeAttribute("aria-current");
+  };
+  window.addEventListener("scroll", updateHeaderShadow, { passive: true });
+  window.addEventListener("resize", updateHeaderShadow);
+  updateHeaderShadow();
+  let introRun = 0;
+  const animateTyping = async (run) => {
+    const isCurrent = () => run === introRun;
+    const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const type = async (text, delay, target = ui.typingCopy) => {
+      for (const character of text) {
+        if (!isCurrent()) return false;
+        target.textContent += character;
+        await pause(delay);
+      }
+      return isCurrent();
+    };
+    const backspace = async (count, delay, target = ui.typingCopy) => {
+      for (let i = 0; i < count; i += 1) {
+        if (!isCurrent()) return false;
+        target.textContent = target.textContent.slice(0, -1);
+        await pause(delay);
+      }
+      return isCurrent();
+    };
+
+    ui.typingCopy.textContent = "";
+    await pause(1000);
+    if (!isCurrent() || !await type("Type fast", 55)) return;
+    const typo = document.createElement("span");
+    typo.className = "typing-error";
+    ui.typingCopy.append(typo);
+    if (!await type("re", 55, typo)) return;
+    await pause(100);
+    if (!isCurrent() || !await backspace(2, 55, typo)) return;
+    typo.remove();
+    if (!await type("er", 55)) return;
+    await pause(500);
+    if (!isCurrent() || !await type(" - with ", 38)) return;
+    landingStage.classList.add("real-arriving");
+    startHeroCardCarousel();
+    if (!await type("REAL", 18)) return;
+    await pause(600);
+    if (isCurrent()) await type(" feedback.", 18);
+  };
+
+  const startLandingIntro = () => {
+    introRun += 1;
+    const run = introRun;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      ui.typingCopy.textContent = "Type faster - with REAL feedback.";
+      landingStage.classList.add("real-arriving");
+      return;
+    }
+    animateTyping(run);
+  };
+  const resetStoryAnimations = () => {
+    storyGeneration += 1;
+    activeStorySections.clear();
+    for (const { section, targets } of storyGroups) {
+      storyObserver.unobserve(section);
+      for (const target of targets) {
+        target.textContent = "";
+        const copy = target.closest(".hero-story-copy");
+        if (copy) copy.dataset.ghost = "";
+        const caret = target.nextElementSibling;
+        caret?.classList.remove("is-active");
+        const wpmReadout = caret?.nextElementSibling;
+        if (wpmReadout) {
+          wpmReadout.textContent = "";
+          wpmReadout.classList.remove("is-visible");
+        }
+      }
+      storyObserver.observe(section);
+    }
+  };
+  resetLandingAnimations = () => {
+    introRun += 1;
+    ui.typingCopy.textContent = "";
+    landingStage.classList.add("is-resetting");
+    landingStage.classList.remove("real-arriving");
+    resetHeroCardCarousel();
+    resetStoryAnimations();
+  };
+  startLandingAnimations = () => {
+    landingStage.classList.remove("is-resetting");
+    startLandingIntro();
+  };
+  startLandingIntro();
 }
 
 // Watch fps once per second; warn if tracking is too slow to trust.
@@ -321,8 +1397,6 @@ function applySettingsToControls() {
   for (const radio of ui.facingRadios) radio.checked = radio.value === state.settings.cameraFacing;
 }
 
-// "Hands facing me" turns only the picture around (upside down and mirrored).
-// Tracking data and the finger check never see it, so it cannot change any result.
 function applyFlipView() {
   ui.stage.classList.toggle("flipped", state.settings.flipView);
   overlay.setFlipped(state.settings.flipView);
@@ -347,38 +1421,201 @@ function positioningTip(hasLeft, hasRight) {
   return "Both hands visible. Keep them in view while you type.";
 }
 
+function hasSelectedCamera() {
+  return !ui.cameraPicker.disabled && ui.cameraPicker.selectedIndex >= 0;
+}
+
+function canAdvanceSetupStep() {
+  if (state.setupStep === 1) return hasSelectedCamera();
+  if (state.setupStep === 2) return ui.setupKeyboardConfirmed.checked;
+  if (state.setupStep === 3) return [...ui.facingRadios].some((radio) => radio.checked);
+  if (state.setupStep === 4) return state.setupHandsReady;
+  return state.setupHandsReady && ui.setupLabelsConfirmed.checked;
+}
+
+function updateSetupWizardControls() {
+  const visibleStep = state.setupStep - (DEVICE_IS_PHONE ? 1 : 0);
+  const visibleStepTotal = DEVICE_IS_PHONE ? 4 : 5;
+  ui.setupContinue.disabled = !canAdvanceSetupStep();
+  ui.setupContinue.textContent = state.setupStep === 5 ? "Continue" : "Next";
+  ui.setupContinue.setAttribute("aria-label", state.setupStep === 5 ? "Continue to calibration" : "Next camera setup step");
+  ui.setupStepCount.textContent = `Step ${visibleStep} of ${visibleStepTotal}`;
+  ui.setupCameraGroup.hidden = visibleStep > 1;
+  ui.setupControlsPanel.classList.toggle("is-past-camera", visibleStep > 1);
+  ui.setupCameraGroup.classList.toggle("is-required", state.setupStep === 1 && !hasSelectedCamera());
+  ui.setupKeyboardConfirmed.closest(".setup-confirmation").classList.toggle(
+    "is-required",
+    state.setupStep === 2 && !ui.setupKeyboardConfirmed.checked,
+  );
+  const hasCameraAngle = [...ui.facingRadios].some((radio) => radio.checked);
+  ui.facingRadios[0].closest(".field-group").classList.toggle("is-required", state.setupStep === 3 && !hasCameraAngle);
+  ui.setupLiveStatus.classList.toggle("is-required", state.setupStep === 4 && !state.setupHandsReady);
+  ui.setupLabelsConfirmed.closest(".setup-confirmation").classList.toggle(
+    "is-required",
+    state.setupStep === 5 && !ui.setupLabelsConfirmed.checked,
+  );
+  ui.setupBack.hidden = visibleStep <= 1;
+  ui.setupLiveStatus.hidden = state.setupStep < 4;
+  overlay.setHandsVisible(state.setupStep >= 4);
+  const stepNames = ["Select the right camera", "Check keyboard view", "Choose camera angle", "Show both hands", "Confirm hand labels"];
+  updateCameraFlowProgress(visibleStep - 1, stepNames[state.setupStep - 1]);
+}
+
+function updateCameraFlowProgress(completedSteps, currentStep) {
+  const total = DEVICE_IS_PHONE ? 6 : 7;
+  const completed = Math.max(0, Math.min(total, completedSteps));
+  const current = Math.min(total, completed + 1);
+  const label = `Camera setup · Step ${current} of ${total} · ${currentStep}`;
+  for (const progress of ui.cameraFlowProgresses) {
+    progress.setAttribute("aria-valuemax", String(total));
+    progress.setAttribute("aria-valuenow", String(completed));
+    progress.setAttribute("aria-valuetext", label);
+    progress.querySelector(".camera-flow-progress-fill").style.width = `${completed / total * 100}%`;
+    const tickLayer = progress.querySelector(".camera-flow-progress-ticks");
+    if (tickLayer.children.length !== total - 1) {
+      tickLayer.replaceChildren(...Array.from({ length: total - 1 }, (_, index) => {
+        const tick = document.createElement("span");
+        tick.className = "camera-flow-progress-tick";
+        tick.style.left = `${(index + 1) / total * 100}%`;
+        return tick;
+      }));
+    }
+  }
+  for (const progressLabel of ui.cameraFlowProgressLabels) progressLabel.textContent = label;
+}
+
+function goToSetupStep(step) {
+  const previousStep = state.setupStep;
+  const firstStep = DEVICE_IS_PHONE ? 2 : 1;
+  state.setupStep = Math.max(firstStep, Math.min(5, step));
+  if (state.setupStep === 4 && previousStep === 3) {
+    state.bothHandsSince = null;
+    state.setupHandsReady = false;
+  }
+  ui.setupStepPanels.forEach((panel) => {
+    const panelStep = Number(panel.dataset.setupStep);
+    const active = panelStep === state.setupStep && !(DEVICE_IS_PHONE && panelStep === 1);
+    panel.hidden = !active;
+    panel.classList.remove("is-entering");
+    if (active) {
+      void panel.offsetWidth;
+      panel.classList.add("is-entering");
+    }
+  });
+  ui.setupStepDots.forEach((dot) => {
+    const dotStep = Number(dot.dataset.stepDot);
+    dot.hidden = DEVICE_IS_PHONE && dotStep === 1;
+    if (dotStep === state.setupStep) dot.setAttribute("aria-current", "step");
+    else dot.removeAttribute("aria-current");
+    dot.classList.toggle("is-complete", dotStep < state.setupStep);
+  });
+  updateSetupWizardControls();
+  updateOverlayGrid();
+}
+
+function resetCameraSetupWizard() {
+  state.bothHandsSince = null;
+  state.setupHandsReady = false;
+  ui.setupKeyboardConfirmed.checked = false;
+  ui.setupLabelsConfirmed.checked = false;
+  state.cameraViewRotated = false;
+  updateCameraViewRotation();
+  for (const radio of ui.facingRadios) radio.checked = false;
+  goToSetupStep(DEVICE_IS_PHONE ? 2 : 1);
+}
+
+function updateCameraViewRotation() {
+  ui.stage.classList.toggle("is-rotated", state.cameraViewRotated);
+  overlay.setRotated(state.cameraViewRotated);
+  ui.setupRotateVideo.setAttribute("aria-pressed", String(state.cameraViewRotated));
+  ui.setupRotateVideo.textContent = state.cameraViewRotated ? "Reset view" : "Rotate view 180°";
+}
+
 function updateSetupIndicators(frame) {
   const hasLeft = frame.hands.some((hand) => hand.side === "L");
   const hasRight = frame.hands.some((hand) => hand.side === "R");
-  setIndicator(ui.indicatorLeft, hasLeft);
-  setIndicator(ui.indicatorRight, hasRight);
-  ui.positioningTip.textContent = positioningTip(hasLeft, hasRight);
+  setIndicator(ui.indicatorLeft, hasLeft || state.setupHandsReady);
+  setIndicator(ui.indicatorRight, hasRight || state.setupHandsReady);
+  ui.positioningTip.textContent = state.setupHandsReady && (!hasLeft || !hasRight)
+      ? state.setupStep === 4
+      ? "Hands check passed. You can move them out of frame to click Next."
+      : "Hands check passed. Bring them back if you need to check the wrist labels."
+    : positioningTip(hasLeft, hasRight);
 
   // Continue unlocks after both hands stay visible for a full second.
   if (hasLeft && hasRight) {
     state.bothHandsSince ??= frame.t;
-    if (frame.t - state.bothHandsSince >= SETUP_BOTH_HANDS_REQUIRED_MS) ui.setupContinue.disabled = false;
+    if (frame.t - state.bothHandsSince >= SETUP_BOTH_HANDS_REQUIRED_MS) state.setupHandsReady = true;
   } else {
     state.bothHandsSince = null;
   }
+  if (state.setupStep >= 4) updateSetupWizardControls();
 }
 
 function initSetupScreen() {
   applySettingsToControls();
   applyFlipView();
-  ui.mirroredToggle.addEventListener("change", () => updateSetting("mirrored", ui.mirroredToggle.checked));
+  ui.setupRotateVideo.addEventListener("click", () => {
+    state.cameraViewRotated = !state.cameraViewRotated;
+    updateCameraViewRotation();
+  });
   ui.flipToggle.addEventListener("change", () => {
     updateSetting("flipView", ui.flipToggle.checked);
     applyFlipView();
   });
-  for (const radio of ui.facingRadios) {
-    radio.addEventListener("change", () => radio.checked && updateSetting("cameraFacing", radio.value));
+  for (const copy of ui.setupPlatformCopy) {
+    copy.hidden = DEVICE_IS_PHONE || copy.dataset.platformCopy !== (DEVICE_IS_MAC ? "mac" : "computer");
   }
-  ui.cameraPicker.addEventListener("change", () => startCamera(ui.cameraPicker.value));
+  screenEnterHandlers.setup = resetCameraSetupWizard;
+  for (const button of document.querySelectorAll(".setup-info-trigger")) {
+    const panel = document.getElementById(button.getAttribute("aria-controls"));
+    panel.addEventListener("close", () => button.setAttribute("aria-expanded", "false"));
+    panel.querySelector(".setup-info-close").addEventListener("click", () => panel.close());
+    panel.addEventListener("click", (event) => {
+      if (event.target === panel) panel.close();
+    });
+    button.addEventListener("click", () => {
+      const willOpen = !panel.open;
+      for (const otherButton of document.querySelectorAll(".setup-info-trigger")) {
+        const otherPanel = document.getElementById(otherButton.getAttribute("aria-controls"));
+        otherButton.setAttribute("aria-expanded", "false");
+        if (otherPanel.open) otherPanel.close();
+      }
+      if (willOpen) {
+        button.setAttribute("aria-expanded", "true");
+        panel.showModal();
+      }
+    });
+  }
+  ui.setupKeyboardConfirmed.addEventListener("change", updateSetupWizardControls);
+  ui.setupLabelsConfirmed.addEventListener("change", updateSetupWizardControls);
+  ui.mirroredToggle.addEventListener("change", () => {
+    updateSetting("mirrored", ui.mirroredToggle.checked);
+    ui.setupLabelsConfirmed.checked = false;
+    updateSetupWizardControls();
+  });
+  for (const radio of ui.facingRadios) {
+    radio.addEventListener("change", () => {
+      if (!radio.checked) return;
+      updateSetting("cameraFacing", radio.value);
+      updateSetupWizardControls();
+    });
+  }
+  ui.cameraPicker.addEventListener("change", () => {
+    if (state.screen === "setup") resetCameraSetupWizard();
+    startCamera(ui.cameraPicker.value);
+  });
   ui.cameraRefresh.addEventListener("click", refreshCameraPicker);
   watchCameraChanges(refreshCameraPicker);
-  ui.setupContinue.addEventListener("click", () => showScreen("calibrate"));
-  ui.setupSkipCamera.addEventListener("click", () => showScreen("choose"));
+  ui.setupBack.addEventListener("click", () => goToSetupStep(state.setupStep - 1));
+  ui.setupContinue.addEventListener("click", () => {
+    if (!canAdvanceSetupStep()) return;
+    if (state.setupStep === 5) {
+      state.dashboardSetupComplete = true;
+      showScreen("calibrate");
+    }
+    else goToSetupStep(state.setupStep + 1);
+  });
 }
 
 // ---------- Calibrate screen ----------
@@ -386,10 +1623,14 @@ function initSetupScreen() {
 let calibrationScreen = null;
 let gridCapture = null;
 let reviewingGrid = false;
+let pendingKeyboardGrid = null;
 
 function showCalibrationStep(step) {
   ui.calibrateHomeStep.hidden = step !== "home";
   ui.calibrateGridStep.hidden = step !== "grid";
+  const setupChecks = DEVICE_IS_PHONE ? 4 : 5;
+  ui.calibrateStepTag.textContent = `step ${setupChecks + (step === "home" ? 1 : 2)}`;
+  updateCameraFlowProgress(setupChecks + (step === "home" ? 0 : 1), step === "home" ? "Calibrate hands" : "Map keyboard");
 }
 
 function describeSavedCalibration() {
@@ -398,12 +1639,50 @@ function describeSavedCalibration() {
   return `A saved calibration exists (${grid}). Calibrate again, or skip to keep using it.`;
 }
 
+function gridDiscPosition(point) {
+  const rect = ui.stage.getBoundingClientRect();
+  const videoWidth = ui.video.videoWidth;
+  const videoHeight = ui.video.videoHeight;
+  if (!rect.width || !rect.height || !videoWidth || !videoHeight) return null;
+  const scale = Math.min(rect.width / videoWidth, rect.height / videoHeight);
+  const imageWidth = videoWidth * scale;
+  const imageHeight = videoHeight * scale;
+  const displayX = state.cameraViewRotated ? 1 - point.x : point.x;
+  const displayY = state.cameraViewRotated ? 1 - point.y : point.y;
+  return {
+    left: ((rect.width - imageWidth) / 2 + displayX * imageWidth) / rect.width * 100,
+    top: ((rect.height - imageHeight) / 2 + displayY * imageHeight) / rect.height * 100,
+  };
+}
+
+function renderGridMapDiscs(touches) {
+  for (const disc of ui.gridMapDiscs) {
+    const point = touches?.[disc.dataset.gridCode];
+    const position = point ? gridDiscPosition(point) : null;
+    if (!position) {
+      ui.gridDiscTray.append(disc);
+      disc.style.removeProperty("left");
+      disc.style.removeProperty("top");
+      disc.classList.remove("is-placed");
+      continue;
+    }
+    ui.gridDiscLayer.append(disc);
+    disc.style.left = `${position.left}%`;
+    disc.style.top = `${position.top}%`;
+    disc.classList.add("is-placed");
+    const label = disc.textContent.trim();
+    disc.setAttribute("aria-label", `${label} marker placed on the keyboard. Drag to reposition.`);
+  }
+}
+
 function startGridStep() {
   reviewingGrid = false;
+  pendingKeyboardGrid = null;
   ui.gridCaptureButtons.hidden = false;
   ui.gridReviewButtons.hidden = true;
   showCalibrationStep("grid");
   ui.gridTitle.focus();
+  ui.stage.classList.add("is-mapping");
   gridCapture.start();
   updateOverlayGrid();
 }
@@ -426,34 +1705,112 @@ function initCalibrateScreen() {
   });
   gridCapture = createKeyboardGridCapture({
     elements: { prompt: ui.gridPrompt, steps: ui.gridSteps, status: ui.gridStatus },
-    frameBuffer,
     getHomeRow: () => state.calibration,
+    onProgress: (touches) => {
+      overlay.setKeyboardTouches(touches);
+      renderGridMapDiscs(touches);
+    },
     onGrid: (grid) => {
-      state.calibration = { ...state.calibration, keyboardGrid: grid };
-      saveCalibration(state.calibration);
+      if (!grid) {
+        pendingKeyboardGrid = null;
+        reviewingGrid = false;
+        ui.gridCaptureButtons.hidden = false;
+        ui.gridReviewButtons.hidden = true;
+        ui.stage.classList.add("is-mapping");
+        updateOverlayGrid();
+        return;
+      }
+      const wasReviewing = reviewingGrid;
+      pendingKeyboardGrid = grid;
       reviewingGrid = true;
+      ui.stage.classList.remove("is-mapping");
       ui.gridCaptureButtons.hidden = true;
       ui.gridReviewButtons.hidden = false;
       ui.gridStatus.textContent =
-        `Keyboard map saved (home row fit: ${grid.homeRowErrorKeys?.toFixed(2) ?? "?"} keys). ` +
-        "Check that the orange dots sit on the keys in the video.";
+        `${grid.homeRowWarning ?? "Keyboard map ready."} Drag any disc to adjust it before finishing.`;
       updateOverlayGrid();
-      ui.gridContinue.focus();
+      if (!wasReviewing) ui.gridContinue.focus();
     },
   });
   screenEnterHandlers.calibrate = () => {
     calibrationScreen.reset();
     gridCapture.stop();
     reviewingGrid = false;
+    pendingKeyboardGrid = null;
+    ui.stage.classList.remove("is-mapping");
     showCalibrationStep("home");
     ui.calibrateStatus.textContent = describeSavedCalibration();
   };
+  let activeDiscDrag = null;
+  const moveDisc = (event) => {
+    if (!activeDiscDrag || event.pointerId !== activeDiscDrag.pointerId) return;
+    activeDiscDrag.preview.style.left = `${event.clientX}px`;
+    activeDiscDrag.preview.style.top = `${event.clientY}px`;
+  };
+  const finishDiscDrag = (event, drop) => {
+    if (!activeDiscDrag || event.pointerId !== activeDiscDrag.pointerId) return;
+    const drag = activeDiscDrag;
+    activeDiscDrag = null;
+    drag.preview.remove();
+    if (!drop || state.screen !== "calibrate" || ui.calibrateGridStep.hidden || !gridCapture.running) return;
+    const point = pointInVideoFrame(
+      event.clientX,
+      event.clientY,
+      ui.stage.getBoundingClientRect(),
+      ui.video.videoWidth,
+      ui.video.videoHeight,
+    );
+    if (!point) {
+      ui.gridStatus.textContent = "Drop each disc on the camera image, over the center of its matching key.";
+      return;
+    }
+    if (state.cameraViewRotated) {
+      point.x = 1 - point.x;
+      point.y = 1 - point.y;
+    }
+    gridCapture.handlePoint(drag.code, point);
+  };
+  const beginDiscDrag = (event) => {
+    if (event.button !== 0 || state.screen !== "calibrate" || ui.calibrateGridStep.hidden || !gridCapture.running) return;
+    const disc = event.target.closest(".grid-map-disc");
+    if (!disc || activeDiscDrag) return;
+    event.preventDefault();
+    const rect = disc.getBoundingClientRect();
+    const preview = disc.cloneNode(true);
+    preview.classList.add("is-drag-preview");
+    preview.style.width = `${rect.width}px`;
+    preview.style.height = `${rect.height}px`;
+    preview.style.left = `${event.clientX}px`;
+    preview.style.top = `${event.clientY}px`;
+    document.body.append(preview);
+    activeDiscDrag = { code: disc.dataset.gridCode, pointerId: event.pointerId, preview };
+  };
+  ui.gridDiscTray.addEventListener("pointerdown", beginDiscDrag);
+  ui.gridDiscLayer.addEventListener("pointerdown", beginDiscDrag);
+  document.addEventListener("pointermove", moveDisc);
+  document.addEventListener("pointerup", (event) => finishDiscDrag(event, true));
+  document.addEventListener("pointercancel", (event) => finishDiscDrag(event, false));
   ui.calibrateStart.addEventListener("click", () => calibrationScreen.start());
-  ui.calibrateSkip.addEventListener("click", () => showScreen("choose"));
+  ui.calibrateSkip.addEventListener("click", () => openTypingTest("choose"));
   ui.gridRestart.addEventListener("click", startGridStep);
   ui.gridRedo.addEventListener("click", startGridStep);
-  ui.gridSkip.addEventListener("click", () => showScreen("choose"));
-  ui.gridContinue.addEventListener("click", () => showScreen("choose"));
+  const finishStepSeven = () => {
+    if (pendingKeyboardGrid) {
+      state.calibration = { ...state.calibration, keyboardGrid: pendingKeyboardGrid };
+      saveCalibration(state.calibration);
+    }
+    pendingKeyboardGrid = null;
+    reviewingGrid = false;
+    state.dashboardSetupComplete = true;
+    ui.stage.classList.remove("is-mapping");
+    gridCapture.stop();
+    openDashboard();
+  };
+  ui.gridSkip.addEventListener("click", finishStepSeven);
+  ui.gridContinue.addEventListener("click", () => {
+    if (!pendingKeyboardGrid) return;
+    finishStepSeven();
+  });
 }
 
 /**
@@ -461,11 +1818,17 @@ function initCalibrateScreen() {
  * Calibrate screen, or anywhere when the debug checkbox asks for it.
  */
 function updateOverlayGrid() {
-  const grid = state.calibration?.keyboardGrid ?? null;
   const reviewing = state.screen === "calibrate" && reviewingGrid;
+  const grid = reviewing ? pendingKeyboardGrid : state.calibration?.keyboardGrid ?? null;
   overlay.setKeyboardGrid(reviewing || ui.debugShowGrid.checked ? grid : null);
+  const showHover = reviewing || state.screen === "setup" || state.screen === "exercise";
+  overlay.setHoverGrid(showHover ? grid : null);
+  const setupLabels = state.screen === "setup" && state.setupStep >= 4;
+  const debugLabels = state.screen === "exercise" && !ui.debugPanel.hidden;
+  overlay.setFingerLabels(setupLabels || reviewing || debugLabels);
+  overlay.setSideLabels(state.screen !== "exercise" || debugLabels);
   ui.debugGridStatus.textContent = grid
-    ? `Keyboard map from ${grid.createdAt}, home row fit ${grid.homeRowErrorKeys?.toFixed(2) ?? "?"} keys.`
+    ? `${reviewing ? "Keyboard map preview" : `Keyboard map from ${grid.createdAt}`}, home row fit ${grid.homeRowErrorKeys?.toFixed(2) ?? "?"} keys.`
     : "No keyboard map in the current calibration.";
 }
 
@@ -484,8 +1847,8 @@ function advanceExerciseIndex(levelId, finishedIndex) {
   storage.setJSON(KEYS.exerciseProgress, { ...exerciseProgress(), [levelId]: finishedIndex + 1 });
 }
 
-function renderLevelList() {
-  ui.levelList.replaceChildren(
+function renderLevelList(container = ui.levelList) {
+  container.replaceChildren(
     ...LEVELS.map((level) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -507,7 +1870,7 @@ function initChooseScreen() {
     renderLevelList();
     renderHistory(ui.historyChoose, storage.loadHistory());
   };
-  ui.chooseBackSetup.addEventListener("click", () => showScreen("setup"));
+  ui.chooseBackSetup.addEventListener("click", openCameraSetup);
   ui.chooseRecalibrate.addEventListener("click", () => showScreen("calibrate"));
 }
 
@@ -528,8 +1891,35 @@ function startExerciseWithText(text, info, title) {
   renderTargetText();
   setFeedback("Start typing when ready.", "idle");
   updateExerciseDisplay();
-  showScreen("exercise");
-  ui.typingArea.focus();
+  showScreen("exercise").then(() => {
+    ui.typingArea.focus({ preventScroll: true });
+    resumeCameraForPractice();
+  });
+}
+
+async function resumeCameraForPractice() {
+  ui.exerciseCameraStatus.hidden = true;
+  // The app closes camera tracks when leaving setup for the dashboard. Reopen
+  // the selected device for lessons that have completed camera calibration.
+  if (!state.dashboardSetupComplete) return;
+  ui.exerciseCameraStatus.hidden = false;
+  ui.exerciseCameraStatus.textContent = "Reconnecting the camera for finger coaching…";
+  if (!cameraAllowedHere()) {
+    ui.exerciseCameraStatus.textContent = CAMERA_ERROR_TEXT.insecure;
+    return;
+  }
+  state.setupStarted = true;
+  if (!state.stream) await startCamera(rememberedCamera());
+  if (!state.stream) {
+    ui.exerciseCameraStatus.textContent = ui.setupError.textContent || CAMERA_ERROR_TEXT.unknown;
+    return;
+  }
+  if (!state.tracker?.running) await startTracking();
+  if (!state.tracker?.running) {
+    ui.exerciseCameraStatus.textContent = ui.setupError.textContent || "Camera is on, but hand tracking is unavailable.";
+    return;
+  }
+  ui.exerciseCameraStatus.hidden = true;
 }
 
 function renderTargetText() {
@@ -586,7 +1976,6 @@ function handleExerciseKey(keyEvent) {
   const keystroke = session.handleKey(keyEvent);
   if (!keystroke) return;
   updateExerciseDisplay();
-  // A wrong key is known at once, so its beat does not wait for the finger check.
   if (keystroke.kind === "char" && !keystroke.correct) beatFlash.beat("bad");
   scheduleFingerCheck(session, keystroke, keyEvent);
   if (session.isComplete) finishExercise();
@@ -706,20 +2095,18 @@ pipeline.onKey((keyEvent) => {
   if (state.screen === "calibrate" && !ui.calibrateHomeStep.hidden && keyEvent.code === "Space" && !calibrationScreen.capturing) {
     calibrationScreen.start();
   }
-  // Then the keyboard map step listens for Q, P, Z and /.
-  if (state.screen === "calibrate" && gridCapture.running) gridCapture.handleKey(keyEvent);
 });
 
-// ---------- Data collection run (debug) ----------
+// ---------- Labeled camera recordings (debug) ----------
 
-let collection = null; // { session, recorder, seed, finishing } while a run is going
+let collection = null;
+let lastCollectHandsShown = null;
 
-/** Both hands in the newest LIVE frame, and that frame is recent. */
-function handsVisibleNow() {
+function handsVisibleForCollection() {
   const latest = frameBuffer.latest();
   if (!latest || pipeline.source !== "live") return false;
   if (performance.now() - latest.t > DATA_COLLECTION_MAX_FRAME_AGE_MS) return false;
-  return latest.hands.some((h) => h.side === "L") && latest.hands.some((h) => h.side === "R");
+  return latest.hands.some((hand) => hand.side === "L") && latest.hands.some((hand) => hand.side === "R");
 }
 
 function showCollectPart(part) {
@@ -729,22 +2116,21 @@ function showCollectPart(part) {
 }
 
 function collectSetupNote() {
-  if (!state.tracker?.running) return "The camera is not running. Go through Camera setup first, or every key will be skipped.";
-  if (!state.calibration) return "No calibration yet. Calibrate first (with the keyboard map) so the recording carries it.";
-  if (!state.calibration.keyboardGrid) return "Your calibration has no keyboard map. Calibrate again and map the keyboard first, if you can.";
-  return "Calibration with keyboard map found. Ready.";
+  if (!state.tracker?.running || !state.stream) return "Camera tracking is not running. Complete camera setup first.";
+  if (!state.calibration) return "No hand calibration yet. Complete camera setup before collecting data.";
+  if (!state.calibration.keyboardGrid) return "No keyboard map is saved. You can record, but map the keyboard first for better evaluation.";
+  return "Camera and keyboard map ready.";
 }
 
 function renderCollectPrompt(message) {
   const { session } = collection;
   const prompt = session.current();
   if (prompt) {
-    // Show the key as a keycap so letters like l and I can't be mixed up.
     const keycap = document.createElement("kbd");
     keycap.textContent = prompt.label;
     ui.collectPrompt.replaceChildren("Press ", keycap, describePrompt(prompt).slice(`Press ${prompt.label}`.length));
   } else {
-    ui.collectPrompt.textContent = "All done. Saving...";
+    ui.collectPrompt.textContent = "All done. Saving…";
   }
   ui.collectPrompt.classList.toggle("on-purpose", Boolean(prompt?.onPurposeWrong));
   const { done, total } = session.progress;
@@ -753,42 +2139,40 @@ function renderCollectPrompt(message) {
   if (message !== undefined) ui.collectStatus.textContent = message;
 }
 
-let lastHandsShown = null;
 function renderCollectHands() {
-  const visible = handsVisibleNow();
-  if (visible === lastHandsShown) return; // only touch the page when it changes
-  lastHandsShown = visible;
+  const visible = handsVisibleForCollection();
+  if (visible === lastCollectHandsShown) return;
+  lastCollectHandsShown = visible;
   ui.collectHands.dataset.on = String(visible);
   ui.collectHands.textContent = visible ? "✓ Both hands visible" : "✗ Waiting for both hands to be in view";
 }
 
 function startCollection() {
-  if (pipeline.source !== "live") {
-    ui.collectCalibrationNote.textContent = "Wait for the replay to finish first.";
+  if (pipeline.source !== "live" || !state.stream || !state.tracker?.running) {
+    ui.collectCalibrationNote.textContent = collectSetupNote();
     return;
   }
   const seed = Math.floor(Math.random() * 2 ** 31);
   const prompts = buildPrompts({ repeats: DATA_COLLECTION_REPEATS, wrongShare: DATA_COLLECTION_WRONG_SHARE, seed });
-  const recorder = new Recorder();
-  recorder.start({
+  const collectionRecorder = new Recorder();
+  collectionRecorder.start({
     ...recordingMeta(),
     collection: { seed, repeats: DATA_COLLECTION_REPEATS, wrongShare: DATA_COLLECTION_WRONG_SHARE, prompts: prompts.length },
   });
-  collection = { session: createCollectionSession(prompts), recorder, seed, finishing: false };
-  lastHandsShown = null;
+  collection = { session: createCollectionSession(prompts), recorder: collectionRecorder, seed, finishing: false };
+  lastCollectHandsShown = null;
   showCollectPart("running");
   renderCollectPrompt("");
   renderCollectHands();
   ui.collectPrompt.focus();
 }
 
-const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
-
 function finishCollection(reason = "") {
-  const { session, recorder, seed } = collection;
+  if (!collection) return;
+  const { session, recorder: collectionRecorder, seed } = collection;
   collection = null;
   const { done, total } = session.progress;
-  const recording = recorder.stop({ fpsAtStop: state.tracker?.stats.fps ?? null });
+  const recording = collectionRecorder.stop({ fpsAtStop: state.tracker?.stats.fps ?? null });
   const typist = ui.collectTypist.value.trim();
   recording.labels = session.labels({
     ...(typist ? { typist } : {}),
@@ -797,48 +2181,66 @@ function finishCollection(reason = "") {
       "Each label is the finger the app asked for; keys that did not match a prompt are skipped.",
   });
   const fileName = downloadRecording(recording, "collection");
-  ui.collectResult.textContent = `${reason}Saved ${fileName}: ${plural(recording.keyEvents.length, "key")} (${session.countedKeys} labeled) and ${recording.frames.length} frames.`;
+  ui.collectResult.textContent = `${reason}Saved ${fileName}: ${recording.keyEvents.length} keys (${session.countedKeys} labeled), ${recording.frames.length} frames.`;
   showCollectPart("done");
   ui.collectAgain.focus();
 }
 
 function cancelCollection() {
+  if (!collection) return;
   collection.recorder.stop();
   collection = null;
   showCollectPart("intro");
 }
 
 function handleCollectionKey(keyEvent) {
+  collection.recorder.addKey(keyEvent);
   if (collection.finishing) {
-    collection.recorder.addKey(keyEvent); // still part of the recording, just not labeled
     collection.session.handleKey(keyEvent, { handsVisible: false });
     return;
   }
-  collection.recorder.addKey(keyEvent);
-  const { message } = collection.session.handleKey(keyEvent, { handsVisible: handsVisibleNow() });
+  const { message } = collection.session.handleKey(keyEvent, { handsVisible: handsVisibleForCollection() });
   renderCollectPrompt(message);
   if (collection.session.finished) {
-    // Keep recording a moment so the frames just after the last key are saved too.
     collection.finishing = true;
     setTimeout(() => collection && finishCollection(), DATA_COLLECTION_TAIL_MS);
   }
+}
+
+async function prepareCollectCamera() {
+  ui.collectStart.disabled = true;
+  if (pipeline.source !== "live") {
+    ui.collectCalibrationNote.textContent = "Wait for the replay to finish before collecting data.";
+    return;
+  }
+  if (!cameraAllowedHere()) {
+    ui.collectCalibrationNote.textContent = CAMERA_ERROR_TEXT.insecure;
+    return;
+  }
+  ui.collectCalibrationNote.textContent = "Starting camera tracking…";
+  state.setupStarted = true;
+  if (!state.stream) await startCamera(rememberedCamera());
+  if (state.stream) await startTracking();
+  if (state.screen !== "collect") return;
+  ui.collectCalibrationNote.textContent = collectSetupNote();
+  ui.collectStart.disabled = !state.stream || !state.tracker?.running;
 }
 
 function initCollectScreen() {
   screenEnterHandlers.collect = () => {
     if (collection) return;
     showCollectPart("intro");
-    ui.collectCalibrationNote.textContent = collectSetupNote();
+    prepareCollectCamera();
   };
   ui.collectStart.addEventListener("click", startCollection);
-  ui.collectFinish.addEventListener("click", () => collection && finishCollection("Finished early. "));
-  ui.collectCancel.addEventListener("click", () => collection && cancelCollection());
+  ui.collectFinish.addEventListener("click", () => finishCollection("Finished early. "));
+  ui.collectCancel.addEventListener("click", cancelCollection);
   ui.collectAgain.addEventListener("click", () => screenEnterHandlers.collect());
-  ui.collectBack.addEventListener("click", () => showScreen("choose"));
-  ui.collectDoneBack.addEventListener("click", () => showScreen("choose"));
+  ui.collectBack.addEventListener("click", openDashboard);
+  ui.collectDoneBack.addEventListener("click", openDashboard);
   ui.debugCollect.addEventListener("click", () => {
-    // The debug panel covers the page; close it before showing the run.
     if (!ui.debugPanel.hidden) ui.debugToggle.click();
+    state.exerciseActive = false;
     showScreen("collect");
   });
 }
@@ -847,7 +2249,6 @@ pipeline.onFrame((frame, from) => {
   if (from !== "live" || !collection) return;
   collection.recorder.addFrame(frame);
   renderCollectHands();
-  // The recorder stops itself at RECORDING_MAX_FRAMES; save what we have.
   if (!collection.recorder.recording) finishCollection("Stopped at the recording size limit. ");
 });
 
@@ -981,6 +2382,7 @@ function initDebugPanel() {
     ui.debugPanel.hidden = !open;
     ui.debugToggle.setAttribute("aria-expanded", String(open));
     ui.debugToggle.textContent = open ? "Close debug" : "Debug";
+    updateOverlayGrid();
     redrawTraces();
   });
   ui.debugRecord.addEventListener("click", startRecording);
@@ -1028,6 +2430,9 @@ pipeline.onFrame((frame) => {
 // ---------- Start ----------
 
 function start() {
+  clearSavedCalibration();
+  initLandingScreen();
+  initTypingTestScreen();
   initSetupScreen();
   initCalibrateScreen();
   initChooseScreen();
@@ -1047,15 +2452,7 @@ function start() {
     return;
   }
 
-  showScreen("setup");
-  if (!cameraAllowedHere()) {
-    showMessage(ui.globalError, CAMERA_ERROR_TEXT.insecure);
-    ui.setupStatus.textContent = "Camera is off.";
-    fillCameraPicker(ui.cameraPicker, [], null);
-    return;
-  }
-  startCamera(rememberedCamera());
-  startTracking();
+  showScreen("landing");
 }
 
 start();

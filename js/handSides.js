@@ -3,7 +3,7 @@
 // We do NOT trust MediaPipe's own "Left"/"Right" label: it is trained on
 // selfie-style images, so with a camera looking down at a keyboard, or a
 // mirrored image, it is often backwards. Instead we use where the hand is in
-// the image, plus two settings that describe how the camera sees the user.
+// the image, plus settings that describe how the camera sees the user.
 
 /**
  * Does the user's left hand appear on the LEFT side of the image (small x)?
@@ -13,13 +13,16 @@
  * - Camera behind the keyboard looking at the user: like a person facing you,
  *   their left hand is on your right.
  * - A mirrored image swaps left and right once more.
+ * - Rotating the image by 180 degrees swaps which side of the raw frame each
+ *   hand occupies.
  *
  * If the camera above the keyboard is rotated so the image is upside down,
  * left/right also swap; the "mirrored" toggle fixes that case too.
  */
-export function userLeftIsOnImageLeft({ mirrored, cameraFacing }) {
+export function userLeftIsOnImageLeft({ mirrored, cameraFacing, rotated = false }) {
   const seesLikeUser = cameraFacing !== "behind";
-  return mirrored ? !seesLikeUser : seesLikeUser;
+  const leftIsImageLeft = mirrored ? !seesLikeUser : seesLikeUser;
+  return rotated ? !leftIsImageLeft : leftIsImageLeft;
 }
 
 /** Average x of a hand's landmarks: its horizontal position in the image (0 = left edge, 1 = right). */
@@ -32,7 +35,7 @@ export function handCenterX(landmarks) {
 /**
  * Label raw detections with sides.
  * @param {Array<{landmarks: Array<{x,y,z}>, score: number}>} detections  MediaPipe hands, any order
- * @param {{mirrored: boolean, cameraFacing: "above"|"behind"}} settings
+ * @param {{mirrored: boolean, cameraFacing: "above"|"behind", rotated?: boolean}} settings
  * @returns {Array<{side: "L"|"R", landmarks, score}>}  left hand first
  */
 export function assignSides(detections, settings) {

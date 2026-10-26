@@ -1,10 +1,9 @@
 // Draws the hand skeleton on a canvas laid exactly over the video, and
-// flashes a fingertip green (right finger) or red (wrong finger; orange for
-// the wrong hand), with a dashed check on the finger that should have pressed.
+// flashes a fingertip green (right finger) or red (wrong finger).
 // Colors are never the only signal: flashes also draw a check or a cross.
 
 import { FLASH_DURATION_MS, MISTAKE_FLASH_DURATION_MS } from "./config.js";
-import { KEY_LAYOUT, keyCenterInImage, keyLabel } from "./keyboardGrid.js";
+import { KEY_LAYOUT, hoveredKey, keyCenterInImage, keyLabel } from "./keyboardGrid.js";
 import {
   FINGERTIP_BY_FINGER_NAME,
   HAND_CONNECTIONS,
@@ -25,6 +24,9 @@ const STYLE = {
   blankBackground: "#202124",
   gridDot: "#ff8a65",
   gridLabel: "#ffffff",
+  fingerTagBackground: "rgba(30, 31, 33, 0.9)",
+  fingerTagBorder: "#ff6b6b",
+  fingerTagText: "#ffffff",
 };
 
 // Size used when there is no video (replaying a recording).
@@ -45,15 +47,22 @@ export class Overlay {
     this.context = canvas.getContext("2d");
     this.video = video;
     this.lastFrame = null;
-    this.activeFlash = null; // { fingerId, correct, shouldUse, wrongHand, until }
+    this.activeFlash = null; // { fingerId, correct, until }
     this.blankMode = false;
+    this.rotated = false;
+    this.flipped = false;
     this.keyboardGrid = null; // drawn when set, so the student can check it lines up
-    this.flipped = false; // "hands facing me": draw turned around to match the video
+    this.keyboardTouches = null;
+    this.fingerLabels = false;
+    this.sideLabels = true;
+    this.handsVisible = true;
+    this.hoverGrid = null;
   }
 
-  /** Draw everything upside down and mirrored, matching the CSS-turned video. Display only. */
-  setFlipped(on) {
-    this.flipped = on;
+  /** Hide hand landmarks and labels until the setup flow reaches hand placement. */
+  setHandsVisible(on) {
+    if (this.handsVisible === on) return;
+    this.handsVisible = on;
     this.redraw();
   }
 
@@ -63,20 +72,66 @@ export class Overlay {
     this.redraw();
   }
 
+  /** Show the corner positions as the student clicks them in the video. */
+  setKeyboardTouches(touches) {
+    this.keyboardTouches = touches;
+    this.redraw();
+  }
+
+  /** Name each tracked fingertip in the camera setup view. */
+  setFingerLabels(on) {
+    if (this.fingerLabels === on) return;
+    this.fingerLabels = on;
+    this.redraw();
+  }
+
+  /** Show or hide the L/R wrist tags independently of fingertip names. */
+  setSideLabels(on) {
+    if (this.sideLabels === on) return;
+    this.sideLabels = on;
+    this.redraw();
+  }
+
+  /** Use a saved keyboard map to show the key under each visible fingertip. */
+  setHoverGrid(grid) {
+    if (this.hoverGrid === grid) return;
+    this.hoverGrid = grid;
+    this.redraw();
+  }
+
   /** Replay draws on a plain background because there is no live video. */
   setBlankMode(on) {
     this.blankMode = on;
     this.redraw();
   }
 
+  /** Rotate overlay positions to match a camera preview rotated by 180 degrees. */
+  setRotated(on) {
+    if (this.rotated === on) return;
+    this.rotated = on;
+    this.redraw();
+  }
+
+  /** Turn the displayed image around without changing the tracked camera coordinates. */
+  setFlipped(on) {
+    if (this.flipped === on) return;
+    this.flipped = on;
+    this.redraw();
+  }
+
+  /** Direction away from the fingertips in the displayed camera view. */
+  get outward() {
+    return this.rotated !== this.flipped ? 1 : -1;
+  }
+
   matchVideoSize() {
     const width = !this.blankMode && this.video?.videoWidth ? this.video.videoWidth : BLANK_WIDTH;
     const height = !this.blankMode && this.video?.videoHeight ? this.video.videoHeight : BLANK_HEIGHT;
-    if (this.canvas.width === width && this.canvas.height === height) return;
-    this.canvas.width = width;
-    this.canvas.height = height;
-    // The exercise layout sizes the camera view from its shape (styles.css, .stage-slot-wide).
-    this.canvas.parentElement?.style.setProperty("--video-aspect", String(width / height));
+    if (this.canvas.width !== width || this.canvas.height !== height) {
+      this.canvas.width = width;
+      this.canvas.height = height;
+      this.canvas.parentElement?.style.setProperty("--video-aspect", String(width / height));
+    }
   }
 
   /** Draw one frame of hands. Called for every tracked frame. */
@@ -94,19 +149,28 @@ export class Overlay {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     if (this.keyboardGrid) this.drawKeyboardGrid();
-    for (const hand of this.lastFrame?.hands ?? []) this.drawHand(hand);
-    this.drawFlash();
+    const hands = this.handsVisible ? this.lastFrame?.hands ?? [] : [];
+    for (const hand of hands) this.drawHand(hand);
+    if (this.handsVisible && this.fingerLabels) this.drawFingerLabels(hands);
+    if (this.keyboardTouches) this.drawKeyboardTouches();
+    if (this.handsVisible) this.drawFlash();
   }
 
   toPixels(point) {
-    const x = this.flipped ? 1 - point.x : point.x;
-    const y = this.flipped ? 1 - point.y : point.y;
+    const turned = this.rotated !== this.flipped;
+    const x = turned ? 1 - point.x : point.x;
+    const y = turned ? 1 - point.y : point.y;
     return { x: x * this.canvas.width, y: y * this.canvas.height };
   }
 
-  /** Which way is "past the fingertips" on screen: up normally, down when flipped. */
-  get outward() {
-    return this.flipped ? 1 : -1;
+  /** Canvas pixels per displayed pixel after object-fit scales the camera image. */
+  displayScale() {
+    const { canvas } = this;
+    const visibleWidth = Math.min(
+      canvas.clientWidth || canvas.width,
+      (canvas.clientHeight || canvas.height) * canvas.width / canvas.height,
+    );
+    return canvas.width / Math.max(1, visibleWidth);
   }
 
   drawHand(hand) {
@@ -127,7 +191,68 @@ export class Overlay {
     }
     this.dot(points[WRIST], 5, STYLE.joint);
     // The L/R label lets the student check the orientation settings at a glance.
-    this.label(points[WRIST], hand.side);
+    if (this.sideLabels) this.label(points[WRIST], hand.side);
+  }
+
+  drawFingerLabels(hands) {
+    const { context: ctx, canvas } = this;
+    const scale = this.displayScale();
+    const fontSize = 16 * scale;
+    const height = 26 * scale;
+    const padding = 8 * scale;
+    const gap = 5 * scale;
+    const edge = 4 * scale;
+    const placed = [];
+    ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    for (const hand of hands) {
+      if (hand.landmarks.length !== LANDMARK_COUNT) continue;
+      for (const [finger, index] of Object.entries(FINGERTIP_BY_FINGER_NAME)) {
+        const tip = this.toPixels(hand.landmarks[index]);
+        const key = this.hoverGrid ? hoveredKey(this.hoverGrid, hand.landmarks[index]) : null;
+        const name = key ? `${finger.toLowerCase()} · ${key.label}` : finger.toLowerCase();
+        const width = ctx.measureText(name).width + padding * 2;
+        const centeredX = tip.x - width / 2;
+        const aboveY = tip.y - height - 12 * scale;
+        const belowY = tip.y + 12 * scale;
+        let box = null;
+        for (const y of [aboveY, aboveY - height - gap, aboveY - 2 * (height + gap), belowY, belowY + height + gap]) {
+          for (const shift of [0, -width * 0.55, width * 0.55]) {
+            const x = Math.max(edge, Math.min(canvas.width - width - edge, centeredX + shift));
+            const candidate = { x, y, width, height };
+            if (y < edge || y + height > canvas.height - edge) continue;
+            if (placed.some((other) =>
+              x < other.x + other.width + gap && x + width + gap > other.x &&
+              y < other.y + other.height + gap && y + height + gap > other.y)) continue;
+            box = candidate;
+            break;
+          }
+          if (box) break;
+        }
+        if (!box) {
+          box = { x: Math.max(edge, Math.min(canvas.width - width - edge, centeredX)),
+            y: Math.max(edge, Math.min(canvas.height - height - edge, aboveY)), width, height };
+        }
+        placed.push(box);
+
+        const lineEndY = box.y > tip.y ? box.y : box.y + height;
+        ctx.beginPath();
+        ctx.moveTo(tip.x, tip.y);
+        ctx.lineTo(box.x + width / 2, lineEndY);
+        ctx.lineWidth = 1.5 * scale;
+        ctx.strokeStyle = STYLE.fingerTagBorder;
+        ctx.stroke();
+        ctx.fillStyle = STYLE.fingerTagBackground;
+        ctx.fillRect(box.x, box.y, width, height);
+        ctx.lineWidth = 1.5 * scale;
+        ctx.strokeStyle = STYLE.fingerTagBorder;
+        ctx.strokeRect(box.x, box.y, width, height);
+        ctx.fillStyle = STYLE.fingerTagText;
+        ctx.fillText(name, box.x + width / 2, box.y + height / 2);
+      }
+    }
   }
 
   drawKeyboardGrid() {
@@ -147,6 +272,19 @@ export class Overlay {
     }
   }
 
+  drawKeyboardTouches() {
+    const ctx = this.context;
+    ctx.font = "bold 18px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const [code, point] of Object.entries(this.keyboardTouches)) {
+      const position = this.toPixels(point);
+      this.dot(position, 14, STYLE.gridDot);
+      ctx.fillStyle = STYLE.labelBackground;
+      ctx.fillText(keyLabel(code), position.x, position.y);
+    }
+  }
+
   dot({ x, y }, radius, color) {
     const ctx = this.context;
     ctx.beginPath();
@@ -155,23 +293,25 @@ export class Overlay {
     ctx.fill();
   }
 
-  /** A small label on the wrist, on the side away from the fingers. */
   label({ x, y }, text) {
     const ctx = this.context;
-    const centerY = y - this.outward * 29;
-    ctx.font = "bold 22px system-ui, sans-serif";
+    const scale = this.fingerLabels ? this.displayScale() : 1;
+    const width = 32 * scale;
+    const height = 30 * scale;
+    const left = Math.max(0, Math.min(this.canvas.width - width, x - width / 2));
+    const centerY = y - this.outward * 29 * scale;
+    const top = Math.max(0, Math.min(this.canvas.height - height, centerY - height / 2));
+    ctx.font = `bold ${22 * scale}px system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = STYLE.labelBackground;
-    ctx.fillRect(x - 16, centerY - 15, 32, 30);
+    ctx.fillRect(left, top, width, height);
     ctx.fillStyle = STYLE.labelText;
-    ctx.fillText(text, x, centerY);
+    ctx.fillText(text, left + width / 2, top + height / 2);
   }
 
   /**
-   * Highlight a fingertip after attribution. For a wrong finger, `shouldUse`
-   * also marks the finger that should have pressed the key, and `wrongHand`
-   * colors the mistake orange. Mistakes stay up longer so there is time to look.
+   * Highlight a fingertip after attribution.
    * With reduced motion the highlight stays (no blinking) until the next result.
    */
   flash(fingerId, correct, { shouldUse = null, wrongHand = false } = {}) {
@@ -201,11 +341,10 @@ export class Overlay {
       return;
     }
     this.markFinger(flash.fingerId, flash.wrongHand ? STYLE.warn : STYLE.wrong, "✗", false);
-    // The finger that should have pressed the key: a dashed ring and a check.
     if (flash.shouldUse) this.markFinger(flash.shouldUse, STYLE.correct, "✓", true);
   }
 
-  /** Ring a fingertip and put a symbol past its tip, so the result does not depend on color. */
+  /** Mark the observed finger, and optionally the expected one, without relying on color alone. */
   markFinger(fingerId, color, symbol, dashed) {
     const { side, index } = fingertipLocation(fingerId);
     const hand = this.lastFrame?.hands.find((h) => h.side === side);

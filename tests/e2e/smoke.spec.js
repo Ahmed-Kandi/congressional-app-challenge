@@ -1,10 +1,8 @@
 // Browser smoke test. Runs in Chromium with a fake camera (a test pattern, no hands),
 // so nothing here depends on hand detection.
 import { test, expect } from "@playwright/test";
-import { ATTRIBUTION_IMPLEMENTED } from "../../js/core/fingerAttribution.js";
 import { buildRecording, serializeRecording } from "../../js/debug/recorder.js";
 import { GRID_CORNERS } from "../../js/keyboardGrid.js";
-import { fingertipLocation } from "../../js/landmarks.js";
 import { generateSynthetic, syntheticCornerTouches } from "../synthetic.js";
 
 // We fail on every console ERROR. Nothing is ignored at the moment, because in
@@ -28,9 +26,15 @@ function watchConsole(page) {
   return errors;
 }
 
-test("setup screen loads with camera picker", async ({ page }) => {
+test("landing page leads into camera setup", async ({ page }) => {
   const errors = watchConsole(page);
   await page.goto("/index.html");
+  await expect(page.locator("#screen-landing")).toBeVisible();
+  await expect(page.locator("#landing-title")).toContainText("hightype");
+  await expect(page.locator("#screen-setup")).toBeHidden();
+  await page.locator("#landing-nav-start").click();
+  await expect(page.locator("#screen-dashboard")).toBeVisible();
+  await page.locator("#dashboard-camera-start").click();
   await expect(page.locator("#screen-setup")).toBeVisible();
   // The fake camera should show up in the picker once permission is granted.
   await expect(page.locator("#camera-picker option")).not.toHaveCount(0);
@@ -68,15 +72,9 @@ test("typing the first 10 characters of a Level 1 drill updates the display", as
   await expect(page.locator("#live-typed")).toHaveText(`10 / ${target.length}`);
   await expect(page.locator("#live-wpm")).not.toHaveText("0");
   await expect(page.locator("#live-accuracy")).toHaveText("100%");
-  // The badge shows only while the team's function is not built yet.
-  if (ATTRIBUTION_IMPLEMENTED) {
-    await expect(page.locator("#attribution-badge")).toBeHidden();
-  } else {
-    await expect(page.locator("#attribution-badge")).toBeVisible();
-    await expect(page.locator("#attribution-badge")).toHaveText("Finger check not built yet");
-  }
+  // With no camera frames, the implemented check still stays neutral.
+  await expect(page.locator("#attribution-badge")).toBeHidden();
   await expect(page.locator("#replay-badge")).toBeHidden();
-  // No camera and no calibration here, so every check is neutral either way.
   await expect(page.locator("#feedback-text")).toHaveText("Finger check unavailable.");
   // The page must not have scrolled from the space bar.
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
@@ -109,7 +107,7 @@ test("replaying a recording drives the exercise and traces through the live code
   // The replayed keys complete the rebuilt exercise text "fdsa", which opens the summary.
   await expect(page.locator("#screen-summary")).toBeVisible({ timeout: 10_000 });
   await expect(page.locator("#summary-char-accuracy")).toHaveText("100%");
-  await expect(page.locator("#summary-finger-accuracy")).toHaveText("not available");
+  await expect(page.locator("#summary-finger-accuracy")).toHaveText("100%");
   // One motion trace per replayed key press.
   await expect(page.locator("#trace-select option")).toHaveCount(4);
   await expect(page.locator("#trace-select option").first()).toContainText('"a" (KeyA), expected left pinky');
@@ -151,7 +149,7 @@ export function attributeKeystroke() { return { finger: "L_INDEX", confidence: 0
 
 test("when the finger check returns results, feedback and finger stats appear", async ({ page }) => {
   const errors = watchConsole(page);
-  await page.route("**/js/core/fingerAttribution.js", (route) =>
+  await page.route("**/js/core/fingerAttribution.js*", (route) =>
     route.fulfill({ contentType: "text/javascript", body: FIXED_ANSWER_MODULE }),
   );
   await page.goto("/index.html?skipSetup=1");
@@ -161,13 +159,9 @@ test("when the finger check returns results, feedback and finger stats appear", 
   await page.keyboard.type("f", { delay: 0 });
   await expect(page.locator("#feedback-text")).toHaveText("Correct finger: left index.");
   await expect(page.locator("#feedback-text")).toHaveAttribute("data-status", "correct");
-  // Right key and right finger: a green beat.
-  await expect(page.locator("#beat-flash")).toHaveAttribute("data-beat", "good");
   await page.keyboard.type("ff j", { delay: 30 });
-  // J pressed with the LEFT index: the right key, but the other hand, so an orange beat.
   await expect(page.locator("#feedback-text")).toHaveText("Wrong hand: used left index, should be right index.");
   await expect(page.locator("#feedback-text")).toHaveAttribute("data-status", "wrong");
-  await expect(page.locator("#beat-flash")).toHaveAttribute("data-beat", "warn");
 
   const target = await page.locator("#target-text").textContent();
   await page.keyboard.type(target.slice(5), { delay: 15 });
@@ -195,8 +189,12 @@ test("works under a GitHub Pages style subpath and only talks to allowed hosts",
     if (response.status() >= 400) failed.push(`${response.status()} ${response.url()}`);
   });
 
-  // Setup screen under /typing-form-coach/ (camera + MediaPipe load).
+  // Landing, dashboard, and setup screens under /typing-form-coach/.
   await page.goto("/typing-form-coach/");
+  await expect(page.locator("#screen-landing")).toBeVisible();
+  await page.locator("#landing-nav-start").click();
+  await expect(page.locator("#screen-dashboard")).toBeVisible();
+  await page.locator("#dashboard-camera-start").click();
   await expect(page.locator("#screen-setup")).toBeVisible();
   await expect(page.locator("#setup-status")).toHaveText(/Tracking hands|unavailable/, { timeout: 30_000 });
 
@@ -213,6 +211,9 @@ test("works under a GitHub Pages style subpath and only talks to allowed hosts",
 test("camera list refreshes on demand and when devices change", async ({ page }) => {
   const errors = watchConsole(page);
   await page.goto("/index.html");
+  await page.locator("#landing-nav-start").click();
+  await expect(page.locator("#screen-dashboard")).toBeVisible();
+  await page.locator("#dashboard-camera-start").click();
   await expect(page.locator("#camera-picker")).toBeEnabled();
   const before = await page.locator("#camera-picker option").count();
 
@@ -234,112 +235,72 @@ test("camera list refreshes on demand and when devices change", async ({ page })
   expect(errors).toEqual([]);
 });
 
-test("calibration then keyboard map, driven by a replayed synthetic recording", async ({ page }, testInfo) => {
-  const errors = watchConsole(page);
-  // Hands rest on the home row; Space starts the home row capture; then the
-  // named index finger sits on Q, P, Z and / around each of those key presses.
-  const { frames } = generateSynthetic({ fps: 30, durationMs: 6600, startTime: 0, seed: 7 });
-  const touches = syntheticCornerTouches();
-  const cornerTimes = [4600, 5100, 5600, 6100];
-  for (const frame of frames) {
-    GRID_CORNERS.forEach((corner, i) => {
-      if (Math.abs(frame.t - cornerTimes[i]) > 200) return;
-      const { side, index } = fingertipLocation(corner.finger);
-      const hand = frame.hands.find((h) => h.side === side);
-      hand.landmarks[index] = { ...touches[corner.code], z: 0 };
-    });
-  }
-  // Key names longer than one character, so the replay does not start an exercise.
-  const keyEvents = [
-    { code: "Space", key: "Space", t: 300 },
-    ...GRID_CORNERS.map((corner, i) => ({ code: corner.code, key: corner.code, t: cornerTimes[i] })),
-  ];
-  const recording = buildRecording({ frames, keyEvents, meta: { note: "e2e keyboard map" } });
-
-  await page.goto("/index.html?skipSetup=1");
-  await page.keyboard.press("Escape");
-  await page.locator("#choose-recalibrate").click();
-  await expect(page.locator("#calibrate-home-step")).toBeVisible();
-  await expect(page.locator("#calibrate-grid-step")).toBeHidden();
-
-  await page.locator("#debug-toggle").click();
-  await page.locator("#debug-load").setInputFiles({
-    name: "keyboard-map.json",
-    mimeType: "application/json",
-    buffer: Buffer.from(serializeRecording(recording)),
-  });
-
-  await expect(page.locator("#calibrate-grid-step")).toBeVisible({ timeout: 6_000 });
-  await expect(page.locator("#grid-status")).toContainText("Keyboard map saved", { timeout: 6_000 });
-  await expect(page.locator("#grid-continue")).toBeVisible();
-  await expect(page.locator("#grid-steps li.done")).toHaveCount(4);
-  await page.locator("#stage").screenshot({ path: testInfo.outputPath("keyboard-map.png") });
-
-  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("typingFormCoach.calibration") ?? "null"));
-  expect(saved?.keyboardGrid?.homography).toHaveLength(9);
-  expect(saved.keyboardGrid.homeRowErrorKeys).toBeLessThan(0.5);
-
-  // The debug panel covers part of the page; close it to reach the button.
-  await page.locator("#debug-toggle").click();
-  await page.locator("#grid-continue").click();
-  await expect(page.locator("#screen-choose")).toBeVisible();
-  await page.locator("#debug-toggle").click();
-  await page.locator("#debug-show-grid").check();
-  await expect(page.locator("#debug-grid-status")).toContainText("Keyboard map from");
-  expect(errors).toEqual([]);
-});
-
-test("data collection run prompts, skips keys without hands, and downloads a labeled recording", async ({ page }) => {
+test("labeled data collection opens from Debug and returns to the dashboard", async ({ page }) => {
   const errors = watchConsole(page);
   await page.goto("/index.html?skipSetup=1");
-  await page.keyboard.press("Escape");
   await page.locator("#debug-toggle").click();
   await page.locator("#debug-collect").click();
   await expect(page.locator("#screen-collect")).toBeVisible();
-  await expect(page.locator("#debug-panel")).toBeHidden();
-  await expect(page.locator("#collect-calibration-note")).toContainText("camera is not running");
-
-  await page.locator("#collect-typist").fill("e2e");
-  await page.locator("#collect-start").click();
-  await expect(page.locator("#collect-prompt")).toContainText(/^Press .+ with your /);
-  await expect(page.locator("#collect-progress-text")).toHaveText(/^0 of \d+ prompts$/);
-  await expect(page.locator("#collect-hands")).toContainText("Waiting for both hands");
-
-  // The fake camera shows no hands, so a key press is recorded but not counted.
-  await page.keyboard.press("KeyF");
-  await expect(page.locator("#collect-status")).toContainText("Both hands must be in view");
-  await expect(page.locator("#collect-progress-text")).toHaveText(/^0 of /);
-
-  const downloadPromise = page.waitForEvent("download");
-  await page.locator("#collect-finish").click();
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^collection-.*\.json$/);
-  const recording = JSON.parse(await (await download.createReadStream()).toArray().then((chunks) => Buffer.concat(chunks).toString("utf8")));
-  expect(recording.format).toBe("typing-form-coach-recording");
-  expect(recording.keyEvents.map((k) => k.code)).toEqual(["KeyF"]);
-  expect(recording.labels).toMatchObject({ typist: "e2e", source: "data collection run", skip: "1" });
-  expect(recording.meta.collection.prompts).toBeGreaterThan(90);
-  await expect(page.locator("#collect-result")).toContainText("1 key (0 labeled)");
+  await expect(page.locator("#collect-intro")).toBeVisible();
+  await expect(page.locator("#collect-calibration-note")).not.toBeEmpty();
+  await page.locator("#collect-back").click();
+  await expect(page.locator("#screen-dashboard")).toBeVisible();
   expect(errors).toEqual([]);
 });
 
-test("a typo says which key was wrong instead of judging the finger", async ({ page }) => {
+test("keyboard map can be placed by dragging the discs onto the camera picture", async ({ page }) => {
   const errors = watchConsole(page);
+  const { frames } = generateSynthetic({ fps: 30, durationMs: 4000, startTime: 0, seed: 7 });
+  const recording = buildRecording({
+    frames,
+    keyEvents: [{ code: "Space", key: "Space", t: 300 }],
+    meta: { note: "e2e manual keyboard map" },
+  });
+
   await page.goto("/index.html?skipSetup=1");
-  await expect(page.locator("#screen-exercise")).toBeVisible();
-  const target = await page.locator("#target-text").textContent();
-  // A home row letter that is not the first character, so it is surely a typo.
-  const typo = "asdfjkl".split("").find((c) => c !== target[0]);
-  await page.keyboard.type(typo);
-  await expect(page.locator("#feedback-text")).toHaveText(`Wrong key: you typed "${typo}", the text needs "${target[0]}".`);
-  await expect(page.locator("#feedback-text")).toHaveAttribute("data-status", "wrong-key");
-  // A wrong key flashes red right away, and the pulse fades by itself.
-  await expect(page.locator("#beat-flash")).toHaveAttribute("data-beat", "bad");
-  expect(await page.locator("#beat-flash").evaluate((el) => el.getAnimations().length)).toBe(1);
-  await expect.poll(() => page.locator("#beat-flash").evaluate((el) => el.getAnimations().length)).toBe(0);
-  // The next, correct key goes back to the normal finger check message.
-  await page.keyboard.press("Backspace");
-  await page.keyboard.type(target[0]);
-  await expect(page.locator("#feedback-text")).toHaveText("Finger check unavailable.");
+  await page.locator("#exercise-quit").click();
+  await page.locator("#choose-recalibrate").click();
+  await page.locator("#debug-toggle").click();
+  await page.locator("#debug-load").setInputFiles({
+    name: "home-row.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(serializeRecording(recording)),
+  });
+  await expect(page.locator("#calibrate-grid-step")).toBeVisible({ timeout: 6_000 });
+  await expect(page.locator("#debug-replay-status")).toContainText("(finished)", { timeout: 6_000 });
+  await page.locator("#debug-toggle").click();
+
+  await page.evaluate(async () => {
+    const video = document.querySelector("#camera-video");
+    video.srcObject = await navigator.mediaDevices.getUserMedia({ video: true });
+    await video.play();
+    document.querySelector("#stage").classList.add("has-video");
+  });
+  await page.locator("#stage").scrollIntoViewIfNeeded();
+  const image = await page.evaluate(() => {
+    const stage = document.querySelector("#stage").getBoundingClientRect();
+    const video = document.querySelector("#camera-video");
+    const scale = Math.min(stage.width / video.videoWidth, stage.height / video.videoHeight);
+    const width = video.videoWidth * scale;
+    const height = video.videoHeight * scale;
+    return { left: stage.left + (stage.width - width) / 2, top: stage.top + (stage.height - height) / 2, width, height };
+  });
+  const touches = syntheticCornerTouches();
+  for (const { code } of GRID_CORNERS) {
+    const point = touches[code];
+    const disc = page.locator(`#grid-disc-tray [data-grid-code="${code}"]`);
+    const box = await disc.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(image.left + point.x * image.width, image.top + point.y * image.height, { steps: 8 });
+    await page.mouse.up();
+  }
+  await expect(page.locator("#grid-steps li.done")).toHaveCount(4);
+  await expect(page.locator("#grid-review-buttons")).toBeVisible();
+  await expect(page.locator("#grid-status")).toContainText("Keyboard map ready");
+  await page.locator("#grid-continue").click();
+  await expect(page.locator("#screen-dashboard")).toBeVisible();
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("typingFormCoach.calibration") ?? "null"));
+  expect(saved?.keyboardGrid?.homography).toHaveLength(9);
   expect(errors).toEqual([]);
 });
