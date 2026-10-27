@@ -29,6 +29,27 @@ const STYLE = {
   fingerTagText: "#ffffff",
 };
 
+// Shared by the live camera and the lesson recording so feedback marks match.
+export const FINGER_STATUS_COLORS = { correct: STYLE.correct, wrong: STYLE.wrong, warn: STYLE.warn };
+
+export function drawFingerStatusMark(ctx, tip, color, symbol, dashed, outward) {
+  ctx.beginPath();
+  ctx.arc(tip.x, tip.y, 20, 0, Math.PI * 2);
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = color;
+  ctx.setLineDash(dashed ? [7, 5] : []);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const symbolY = tip.y + outward * 48;
+  ctx.font = "bold 28px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = STYLE.labelBackground;
+  ctx.fillRect(tip.x - 18, symbolY - 18, 36, 36);
+  ctx.fillStyle = color;
+  ctx.fillText(symbol, tip.x, symbolY);
+}
+
 // Size used when there is no video (replaying a recording).
 const BLANK_WIDTH = 640;
 const BLANK_HEIGHT = 360;
@@ -350,22 +371,6 @@ export class Overlay {
     const hand = this.lastFrame?.hands.find((h) => h.side === side);
     if (!hand) return;
     const tip = this.toPixels(hand.landmarks[index]);
-    const ctx = this.context;
-
-    ctx.beginPath();
-    ctx.arc(tip.x, tip.y, 20, 0, Math.PI * 2);
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = color;
-    ctx.setLineDash(dashed ? [7, 5] : []);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    const symbolY = tip.y + this.outward * 48;
-    ctx.font = "bold 28px system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = STYLE.labelBackground;
-    ctx.fillRect(tip.x - 18, symbolY - 18, 36, 36);
-    ctx.fillStyle = color;
-    ctx.fillText(symbol, tip.x, symbolY);
+    drawFingerStatusMark(this.context, tip, color, symbol, dashed, this.outward);
   }
 }

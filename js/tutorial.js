@@ -3,6 +3,7 @@
 // a short walk-through where the student presses every key once.
 
 import { codeForChar, describeFingers, expectedFingers } from "./fingerMap.js";
+import { feedbackMessage } from "./feedback.js";
 
 // The letter rows of a US keyboard, with each row's stagger in key widths.
 const KEYBOARD_ROWS = [
@@ -52,10 +53,11 @@ export function createWalkthrough(keys) {
     get done() {
       return position >= keys.length;
     },
-    /** @returns {"correct"|"done"|"wrong"|"ignored"} */
-    press(code) {
+    /** @returns {"correct"|"done"|"wrong"|"wrong-finger"|"ignored"} */
+    press(code, fingerStatus = "unavailable") {
       if (position >= keys.length) return "ignored";
       if (code !== tutorialKeyCode(keys[position])) return "wrong";
+      if (fingerStatus === "wrong") return "wrong-finger";
       position += 1;
       return position >= keys.length ? "done" : "correct";
     },
@@ -77,13 +79,27 @@ function kbd(text) {
 /**
  * Run the tutorial screen.
  * @param {object} options
- * @param {object} options.elements  { kicker, title, intro, text, tip, keyboard, keyCards, prompt, progress, status, startButton }
+ * @param {object} options.elements  { kicker, title, intro, text, tip, keyboard, keyCards, handGuide, handCaption, prompt, status, startButton }
  */
-export function createTutorialScreen({ elements }) {
+export function createTutorialScreen({ elements, checkFinger = () => ({ status: "unavailable", used: null }) }) {
   let tutorial = null;
   let walk = null;
+  let checkingFinger = false;
   let onStart = () => {};
   const keyElements = new Map();
+
+  function setStatus(message, status = "idle") {
+    elements.status.textContent = message;
+    elements.status.dataset.status = status;
+  }
+
+  function markWrongFinger(fingerId) {
+    for (const hand of elements.handGuide.querySelectorAll(".tutorial-model-hand")) {
+      for (const finger of hand.querySelectorAll(".tutorial-model-finger")) {
+        finger.classList.toggle("is-mistake", `${hand.dataset.side}_${finger.dataset.finger}` === fingerId);
+      }
+    }
+  }
 
   function renderKeyboard() {
     keyElements.clear();
@@ -136,16 +152,7 @@ export function createTutorialScreen({ elements }) {
     );
   }
 
-  function renderProgress() {
-    elements.progress.replaceChildren(
-      ...tutorial.keys.map((key, i) => {
-        const dot = document.createElement("li");
-        dot.textContent = keyLabel(key);
-        dot.classList.toggle("is-done", i < walk.position);
-        dot.classList.toggle("is-current", i === walk.position);
-        return dot;
-      }),
-    );
+  function renderKeyState() {
     for (const [key, element] of keyElements) {
       const i = tutorial.keys.indexOf(key);
       element.classList.toggle("is-current", i === walk.position);
@@ -155,15 +162,24 @@ export function createTutorialScreen({ elements }) {
 
   function renderPrompt() {
     elements.prompt.replaceChildren();
+    const key = walk.current;
+    const fingers = key ? fingersForKey(key) : [];
+    for (const hand of elements.handGuide.querySelectorAll(".tutorial-model-hand")) {
+      for (const finger of hand.querySelectorAll(".tutorial-model-finger")) {
+        finger.classList.toggle("is-active", fingers.includes(`${hand.dataset.side}_${finger.dataset.finger}`));
+        finger.classList.remove("is-mistake");
+      }
+    }
     if (walk.done) {
       elements.prompt.textContent = "You know every key in this exercise.";
+      elements.handCaption.textContent = "All keys practiced.";
       return;
     }
-    const key = walk.current;
-    const fingers = describeFingers(fingersForKey(key));
+    const fingerNames = describeFingers(fingers);
+    elements.handCaption.textContent = `${keyLabel(key)} · ${fingerNames}${key === "Space" ? "" : " finger"}`;
     elements.prompt.append("Press ", kbd(keyLabel(key)), " with your ");
     const strong = document.createElement("strong");
-    strong.textContent = fingers;
+    strong.textContent = fingerNames;
     elements.prompt.append(strong, key === "Space" ? "." : " finger.");
   }
 
@@ -175,46 +191,72 @@ export function createTutorialScreen({ elements }) {
     tutorial = nextTutorial;
     onStart = startExercise;
     walk = createWalkthrough(tutorial.keys);
+    checkingFinger = false;
     const level = tutorial.levelId === 1 ? "Level 1: Home row drills" : "Level 2: Home row words";
     elements.kicker.textContent = `${level} · Exercise ${tutorial.index + 1} of ${tutorial.count}`;
     elements.title.textContent = tutorial.title;
     elements.intro.textContent = tutorial.intro;
     elements.text.textContent = tutorial.text;
     elements.tip.textContent = tutorial.tip;
-    elements.status.textContent = "Rest your fingers on the home row first, then press each key once.";
+    setStatus("Rest your fingers on the home row first, then press each key once.");
     elements.startButton.disabled = true;
     renderKeyboard();
     renderKeyCards();
     renderPrompt();
-    renderProgress();
+    renderKeyState();
   }
 
   /** Feed every key press here while the tutorial is on screen. */
-  function handleKey(keyEvent) {
+  async function handleKey(keyEvent) {
     if (!walk) return;
     if (walk.done) {
       if (keyEvent.code === "Enter") start();
       return;
     }
+    if (checkingFinger) return;
+    markWrongFinger(null);
     const expected = walk.current;
-    const outcome = walk.press(keyEvent.code);
-    if (outcome === "wrong") {
+    if (keyEvent.code !== tutorialKeyCode(expected)) {
       const pressed = keyEvent.key === " " ? "Space" : keyEvent.key;
-      elements.status.textContent = `That was ${pressed}. Find ${keyLabel(expected)} with your ${describeFingers(fingersForKey(expected))}.`;
+      setStatus(`That was ${pressed}. Find ${keyLabel(expected)} with your ${describeFingers(fingersForKey(expected))}.`, "wrong");
       return;
     }
-    elements.status.textContent = outcome === "done"
-      ? "Nice work! Press Enter or Start exercise when you're ready."
-      : `Got ${keyLabel(expected)}.`;
+
+    checkingFinger = true;
+    setStatus(`Checking the finger used for ${keyLabel(expected)}…`);
+    const activeWalk = walk;
+    let check;
+    try {
+      check = await checkFinger(keyEvent, fingersForKey(expected));
+    } catch {
+      check = { status: "unavailable", used: null };
+    }
+    if (walk !== activeWalk) return;
+    checkingFinger = false;
+    check ??= { status: "unavailable", used: null };
+    const outcome = walk.press(keyEvent.code, check.status);
+    if (outcome === "wrong-finger") {
+      markWrongFinger(check.used);
+      setStatus(`${feedbackMessage(check, fingersForKey(expected))} Try ${keyLabel(expected)} again.`, "wrong");
+      return;
+    }
+
+    const verdict = check.status === "correct"
+      ? feedbackMessage(check, fingersForKey(expected))
+      : `Got ${keyLabel(expected)}. Finger check unavailable.`;
+    setStatus(outcome === "done"
+      ? `${verdict} Walkthrough complete. Press Enter or Start exercise when you're ready.`
+      : verdict, check.status);
     elements.startButton.disabled = !walk.done;
     renderPrompt();
-    renderProgress();
+    renderKeyState();
     if (walk.done) elements.startButton.focus({ preventScroll: true });
   }
 
   /** Leave the tutorial and start the exercise. */
   function start() {
     walk = null;
+    checkingFinger = false;
     onStart();
   }
 

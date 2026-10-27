@@ -10,8 +10,10 @@ const PREFIX = "typingFormCoach.";
 export const KEYS = {
   settings: "settings",
   cameraDeviceId: "cameraDeviceId",
+  cameraSetupCompleted: "cameraSetupCompleted",
   calibration: "calibration",
   history: "history",
+  typingTestResults: "typingTestResults",
   exerciseProgress: "exerciseProgress",
 };
 

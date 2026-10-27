@@ -2,7 +2,7 @@
 
 import { HEADLINE_KEYSTROKE_SHARE } from "./config.js";
 import { LEVELS } from "./exercises.js";
-import { FINGERS, FINGER_LABELS } from "./fingerMap.js";
+import { FINGERS, FINGER_LABELS, describeFingers, expectedFingers, fingerLabel, isFingerId } from "./fingerMap.js";
 
 export function formatPercent(fraction) {
   return fraction == null ? "--" : `${Math.round(fraction * 100)}%`;
@@ -93,8 +93,98 @@ export function historyEntry(summary, date = new Date()) {
     charAccuracy: summary.charAccuracy,
     fingerAccuracy: summary.fingerAccuracy,
     fingerAccuracyByFinger: summary.fingerAccuracyByFinger,
+    fingerErrorsByKey: summary.fingerErrorsByKey,
+    fingerPaceByFinger: summary.fingerPaceByFinger,
     fingersFor90Percent: summary.fingersFor90Percent,
   };
+}
+
+/** Ranked transition times from correctly typed, camera-checked presses. */
+export function fastestFingersFromHistory(history, minimumPresses = 3) {
+  const totals = Object.fromEntries(FINGERS.map((finger) => [finger, { totalMs: 0, count: 0 }]));
+  for (const entry of history) {
+    for (const finger of FINGERS) {
+      const pace = entry.fingerPaceByFinger?.[finger];
+      if (!pace || !Number.isFinite(pace.totalMs) || !Number.isFinite(pace.count)
+        || pace.totalMs <= 0 || pace.count <= 0) continue;
+      totals[finger].totalMs += pace.totalMs;
+      totals[finger].count += pace.count;
+    }
+  }
+  return FINGERS.flatMap((finger) => {
+    const { totalMs, count } = totals[finger];
+    return count >= minimumPresses ? [{ finger, count, averageMs: totalMs / count }] : [];
+  }).sort((a, b) => a.averageMs - b.averageMs || b.count - a.count).slice(0, 3);
+}
+
+export function renderDashboardFastestFingers(container, note, history) {
+  const fastest = fastestFingersFromHistory(history);
+  if (!fastest.length) {
+    container.replaceChildren(element("p", "Finish a few camera-checked lessons to see your quickest fingers here.", "hint"));
+    note.textContent = "Finger speed appears after at least three timed presses for a finger.";
+    return;
+  }
+  const list = element("ol", null, "dashboard-fastest-list");
+  fastest.forEach(({ finger, count, averageMs }, index) => {
+    const row = element("li", null, "dashboard-fastest-row");
+    row.append(
+      element("span", String(index + 1).padStart(2, "0"), "dashboard-fastest-rank"),
+      element("strong", FINGER_LABELS[finger], "dashboard-fastest-name"),
+      element("span", `${Math.round(averageMs)} ms / key`, "dashboard-fastest-time"),
+      element("small", `${count} timed presses`, "dashboard-fastest-count"),
+    );
+    list.append(row);
+  });
+  container.replaceChildren(list);
+  note.textContent = "Average time from one correct key to the next, grouped by the finger that pressed it. Lower is faster.";
+}
+
+/** Physical keys most often pressed with a finger other than their assigned one. */
+export function mostMissedKeysFromHistory(history, limit = 4) {
+  const totals = new Map();
+  for (const entry of history) {
+    for (const [code, saved] of Object.entries(entry?.fingerErrorsByKey ?? {})) {
+      if (!saved || !Number.isFinite(saved.total) || !Number.isFinite(saved.wrong)
+        || saved.total <= 0 || saved.wrong < 0 || saved.wrong > saved.total) continue;
+      const stats = totals.get(code) ?? { code, label: saved.label || code, wrong: 0, total: 0, usedCounts: {} };
+      stats.wrong += saved.wrong;
+      stats.total += saved.total;
+      for (const [finger, count] of Object.entries(saved.usedCounts ?? {})) {
+        if (isFingerId(finger) && Number.isFinite(count) && count > 0) {
+          stats.usedCounts[finger] = (stats.usedCounts[finger] ?? 0) + count;
+        }
+      }
+      totals.set(code, stats);
+    }
+  }
+  return [...totals.values()]
+    .filter((stats) => stats.wrong > 0)
+    .sort((a, b) => b.wrong - a.wrong || b.wrong / b.total - a.wrong / a.total || a.label.localeCompare(b.label))
+    .slice(0, limit);
+}
+
+export function renderDashboardMissedKeys(container, note, history) {
+  const keys = mostMissedKeysFromHistory(history);
+  if (!keys.length) {
+    container.replaceChildren(element("p", "No wrong-finger key patterns yet. Finish a camera-checked lesson to build this view.", "hint"));
+    note.textContent = "Only correct keys pressed with a different finger count here.";
+    return;
+  }
+  container.replaceChildren(...keys.map(({ code, label, wrong, total, usedCounts }) => {
+    const card = element("article", null, "dashboard-missed-card");
+    const keycap = element("kbd", label, "dashboard-missed-keycap");
+    const copy = element("div", null, "dashboard-missed-copy");
+    const expected = describeFingers(expectedFingers(code));
+    copy.append(
+      element("h3", `${wrong} wrong-finger ${wrong === 1 ? "press" : "presses"}`, "dashboard-missed-count"),
+      element("p", `${wrong} of ${total} camera-checked presses · use ${expected || "the assigned finger"}`, "dashboard-missed-detail"),
+    );
+    const common = Object.entries(usedCounts).sort((a, b) => b[1] - a[1])[0];
+    if (common) copy.append(element("small", `Most often used ${fingerLabel(common[0])} instead`, "dashboard-missed-used"));
+    card.append(keycap, copy);
+    return card;
+  }));
+  note.textContent = "Ranked by wrong-finger presses across your recent saved lessons. Ordinary key typos are excluded.";
 }
 
 /** Render recent, camera-checked accuracy beside simple left and right hand models. */

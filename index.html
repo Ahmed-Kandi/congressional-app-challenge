@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="dark">
   <meta name="description" content="Hightype is a camera-powered typing coach that helps you build speed, accuracy, and better finger habits.">
   <title>Hightype — Learn to type with the right fingers</title>
   <!-- Empty icon so the browser does not request /favicon.ico (a 404 on GitHub Pages). -->
@@ -12,7 +12,7 @@
   <!-- The handwritten fonts are served from fonts/ so the page only talks to the hosts the e2e test allows. -->
   <link rel="preload" href="fonts/shantell-sans-latin-full-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="fonts/monaspace-radon-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/styles.css?v=large-practice-camera-1">
+  <link rel="stylesheet" href="css/styles.css?v=lesson-replay-7">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -206,6 +206,25 @@
       </header>
 
       <div class="about-grid">
+        <section class="panel about-card about-card--wide" id="about-who" aria-labelledby="about-who-title">
+          <h2 id="about-who-title">Who it's for</h2>
+          <p>Students learning to type, and anyone self-taught who wants to fix their habits without a teacher watching their hands.</p>
+          <div class="about-essay-heading">
+            <p>The same short essay at two typing speeds. Watch how much of the idea reaches the page in the same time.</p>
+            <button type="button" class="secondary about-essay-replay" id="about-essay-replay">Replay</button>
+          </div>
+          <div class="about-essay-grid" aria-label="Typing speed comparison">
+            <article class="about-essay-example" data-essay-wpm="180">
+              <div class="about-essay-meta"><strong>180 WPM</strong></div>
+              <p class="about-essay-copy">Every student has an idea worth sharing. In an essay, the hard part should be choosing evidence, finding the right words, and making a clear argument. When typing feels natural, those thoughts can reach the page before they disappear. Practice cannot create ideas for us, but it can give us more room to develop them.</p>
+            </article>
+            <article class="about-essay-example" data-essay-wpm="50">
+              <div class="about-essay-meta"><strong>50 WPM</strong></div>
+              <p class="about-essay-copy">Every student has an idea worth sharing. In an essay, the hard part should be choosing evidence, finding the right words, and making a clear argument. When typing feels natural, those thoughts can reach the page before they disappear. Practice cannot create ideas for us, but it can give us more room to develop them.</p>
+            </article>
+          </div>
+        </section>
+
         <section class="panel about-card about-card--wide" aria-labelledby="about-why-title">
           <h2 id="about-why-title">Why it exists</h2>
           <p>Typing trainers check <em>which key</em> you pressed. They can't see <em>which finger</em> pressed it, so habits like hunt-and-peck or typing with two fingers go unnoticed, and those habits cap how fast and comfortably you can type. HighType watches the finger.</p>
@@ -219,11 +238,6 @@
             <li><strong>Check every key.</strong> On a home-row key, if every fingertip is still at home, the right finger pressed it. On any other key, the fingertip sitting on that key is the one that pressed it. When the picture is unclear, HighType says "unavailable" instead of guessing.</li>
             <li><strong>Coach you.</strong> A green, orange or red pulse after each key, a check on the finger you should use, live speed and accuracy, and a per-finger report after every lesson.</li>
           </ol>
-        </section>
-
-        <section class="panel about-card" aria-labelledby="about-who-title">
-          <h2 id="about-who-title">Who it's for</h2>
-          <p>Students learning to type, and anyone self-taught who wants to fix their habits without a teacher watching their hands.</p>
         </section>
 
         <section class="panel about-card" aria-labelledby="about-accuracy-title">
@@ -297,6 +311,38 @@
           </li>
         </ul>
       </section>
+      <section class="panel dashboard-wpm-panel" id="dashboard-wpm-panel" aria-labelledby="dashboard-wpm-title" hidden>
+        <div class="dashboard-wpm-copy">
+          <span class="dashboard-section-label">Quick check</span>
+          <h2 id="dashboard-wpm-title">Test your WPM</h2>
+          <p>Type a short passage to see your speed and accuracy.</p>
+        </div>
+        <div class="dashboard-wpm-actions">
+          <div class="dashboard-wpm-results" id="dashboard-wpm-results" hidden>
+            <span>Last <strong id="dashboard-wpm-last">—</strong> WPM</span>
+            <span>Best <strong id="dashboard-wpm-best">—</strong> WPM</span>
+          </div>
+          <button type="button" class="primary" id="dashboard-wpm-start">Start typing test</button>
+        </div>
+      </section>
+      <section class="panel dashboard-fastest-fingers" aria-labelledby="dashboard-fastest-title">
+        <div class="dashboard-fastest-heading">
+          <span class="dashboard-section-label">Your pace</span>
+          <h2 id="dashboard-fastest-title">Fastest fingers</h2>
+          <p>See which fingers reach their keys quickest in your camera-checked lessons.</p>
+        </div>
+        <div id="dashboard-fastest-list"></div>
+        <p class="hint dashboard-fastest-note" id="dashboard-fastest-note"></p>
+      </section>
+      <section class="panel dashboard-missed-keys" aria-labelledby="dashboard-missed-title">
+        <div class="dashboard-missed-heading">
+          <span class="dashboard-section-label">Finger habits</span>
+          <h2 id="dashboard-missed-title">Most missed keys</h2>
+          <p>Keys you most often press with a different finger than the one assigned.</p>
+        </div>
+        <div class="dashboard-missed-grid" id="dashboard-missed-list"></div>
+        <p class="hint dashboard-missed-note" id="dashboard-missed-note"></p>
+      </section>
       <section class="panel dashboard-finger-accuracy" aria-labelledby="dashboard-finger-accuracy-title">
         <header class="dashboard-finger-accuracy-heading">
           <div>
@@ -310,6 +356,7 @@
       </section>
       <section class="dashboard-view dashboard-lessons" id="dashboard-lessons-view" aria-labelledby="dashboard-lessons-title" hidden>
         <h2 id="dashboard-lessons-title" tabindex="-1">Choose a lesson</h2>
+        <p class="lesson-path-intro">Eight paths take you from the home row to full sentences. Pick any circle to practice.</p>
         <div class="level-list" id="dashboard-level-list"></div>
       </section>
       <dialog class="setup-info-panel dashboard-camera-preview" id="dashboard-camera-preview-dialog" aria-labelledby="dashboard-camera-preview-title">
@@ -556,6 +603,7 @@
     <!-- ===== Screen 4: Choose exercise ===== -->
     <section class="screen" id="screen-choose" data-screen="choose" aria-labelledby="choose-title" hidden>
       <h2 id="choose-title" tabindex="-1"><span class="step-tag">step 4</span> Choose an exercise</h2>
+      <p class="lesson-path-intro">Follow the circles from the home row to fluent sentences, or revisit any lesson.</p>
       <div class="level-list" id="level-list"></div>
       <div class="button-row">
         <button type="button" class="secondary" id="choose-back-setup">Camera setup</button>
@@ -573,16 +621,51 @@
       <p class="tutorial-preview">You'll type: <code id="tutorial-text"></code></p>
       <div class="tutorial-layout">
         <div class="tutorial-main">
-          <section class="panel tutorial-keys" aria-labelledby="tutorial-keys-title">
-            <h3 id="tutorial-keys-title"><span class="tutorial-step" aria-hidden="true">1</span> Meet the keys</h3>
-            <div class="tutorial-keyboard" id="tutorial-keyboard" aria-hidden="true"></div>
-            <ul class="tutorial-key-cards" id="tutorial-key-cards" aria-label="Keys in this exercise"></ul>
-          </section>
-          <section class="panel tutorial-try" aria-labelledby="tutorial-try-title">
-            <h3 id="tutorial-try-title"><span class="tutorial-step" aria-hidden="true">2</span> Try each key</h3>
-            <p class="tutorial-prompt" id="tutorial-prompt" aria-live="assertive"></p>
-            <ol class="tutorial-progress" id="tutorial-progress" aria-hidden="true"></ol>
-            <p class="status-line" id="tutorial-status" role="status"></p>
+          <section class="panel tutorial-workspace" aria-labelledby="tutorial-workspace-title">
+            <h3 id="tutorial-workspace-title">Meet and try the keys</h3>
+            <div class="tutorial-visuals">
+              <div class="tutorial-key-area">
+                <div class="tutorial-keyboard" id="tutorial-keyboard" aria-hidden="true"></div>
+                <ul class="tutorial-key-cards" id="tutorial-key-cards" aria-label="Keys in this exercise"></ul>
+              </div>
+              <section class="tutorial-hand-guide" aria-labelledby="tutorial-hand-guide-title">
+                <h3 id="tutorial-hand-guide-title">Finger guide</h3>
+                <div class="tutorial-model-hands" id="tutorial-hand-guide">
+                  <div class="tutorial-model-hand" data-side="L">
+                    <svg viewBox="0 0 100 112" aria-hidden="true">
+                      <g class="tutorial-model-art">
+                        <path class="tutorial-model-outline" d="M30 104C27 100 26 95 24 89L10 59C7 52 10 46 15 44C20 42 24 46 27 52L32 63L23 23C22 17 25 12 30 11C36 10 39 14 40 20L46 53L43 14C42 8 46 4 52 4C58 4 61 8 61 14L62 52L63 20C63 14 67 11 72 12C78 13 80 18 79 24L76 57L80 35C81 29 85 26 90 28C95 30 96 35 94 41L85 76C84 82 86 89 83 96C81 102 76 105 69 105H39C35 105 32 105 30 104Z" />
+                        <path class="tutorial-model-finger" data-finger="THUMB" d="M13 49Q17 46 21 53L33 77L26 85L13 58Q10 53 13 49Z" />
+                        <path class="tutorial-model-finger" data-finger="INDEX" d="M27 21Q28 15 32 15Q36 15 37 22L44 60L33 65Z" />
+                        <path class="tutorial-model-finger" data-finger="MIDDLE" d="M47 13Q47 8 52 8Q57 8 57 14L59 61L46 61Z" />
+                        <path class="tutorial-model-finger" data-finger="RING" d="M66 21Q67 16 72 16Q77 17 75 24L73 63L61 61Z" />
+                        <path class="tutorial-model-finger" data-finger="PINKY" d="M84 37Q85 32 89 33Q93 34 90 42L82 69L72 65Z" />
+                      </g>
+                    </svg>
+                    <span>Left</span>
+                  </div>
+                  <div class="tutorial-model-hand" data-side="R">
+                    <svg viewBox="0 0 100 112" aria-hidden="true">
+                      <g class="tutorial-model-art">
+                        <path class="tutorial-model-outline" d="M30 104C27 100 26 95 24 89L10 59C7 52 10 46 15 44C20 42 24 46 27 52L32 63L23 23C22 17 25 12 30 11C36 10 39 14 40 20L46 53L43 14C42 8 46 4 52 4C58 4 61 8 61 14L62 52L63 20C63 14 67 11 72 12C78 13 80 18 79 24L76 57L80 35C81 29 85 26 90 28C95 30 96 35 94 41L85 76C84 82 86 89 83 96C81 102 76 105 69 105H39C35 105 32 105 30 104Z" />
+                        <path class="tutorial-model-finger" data-finger="THUMB" d="M13 49Q17 46 21 53L33 77L26 85L13 58Q10 53 13 49Z" />
+                        <path class="tutorial-model-finger" data-finger="INDEX" d="M27 21Q28 15 32 15Q36 15 37 22L44 60L33 65Z" />
+                        <path class="tutorial-model-finger" data-finger="MIDDLE" d="M47 13Q47 8 52 8Q57 8 57 14L59 61L46 61Z" />
+                        <path class="tutorial-model-finger" data-finger="RING" d="M66 21Q67 16 72 16Q77 17 75 24L73 63L61 61Z" />
+                        <path class="tutorial-model-finger" data-finger="PINKY" d="M84 37Q85 32 89 33Q93 34 90 42L82 69L72 65Z" />
+                      </g>
+                    </svg>
+                    <span>Right</span>
+                  </div>
+                </div>
+                <p class="tutorial-hand-caption" id="tutorial-hand-caption"></p>
+              </section>
+            </div>
+            <div class="tutorial-practice">
+              <p class="tutorial-prompt" id="tutorial-prompt" aria-live="assertive"></p>
+              <p class="status-line" id="tutorial-status" role="status"></p>
+              <p class="status-line tutorial-camera-status" id="tutorial-camera-status" role="status" hidden></p>
+            </div>
           </section>
         </div>
         <aside class="tutorial-side">
@@ -631,13 +714,47 @@
 
     <!-- ===== Screen 5: Summary ===== -->
     <section class="screen" id="screen-summary" data-screen="summary" aria-labelledby="summary-title" hidden>
-      <h2 id="summary-title" tabindex="-1">Session summary</h2>
+      <div class="summary-topbar">
+        <h2 id="summary-title" tabindex="-1">Session summary</h2>
+        <div class="summary-top-actions">
+          <button type="button" class="secondary" id="summary-choose">Back to lessons</button>
+        </div>
+      </div>
       <p class="headline" id="summary-headline"></p>
       <dl class="summary-stats">
         <div><dt>Speed</dt><dd id="summary-wpm"></dd></div>
         <div><dt>Character accuracy</dt><dd id="summary-char-accuracy"></dd></div>
         <div><dt>Finger accuracy</dt><dd id="summary-finger-accuracy"></dd></div>
       </dl>
+      <section class="summary-replay-section" id="mistake-replay-section" aria-labelledby="mistake-replay-title" hidden>
+        <div class="mistake-replay-topbar">
+          <div>
+            <h3 id="mistake-replay-title">Replay finger mistakes</h3>
+            <p>Step through the moments you used the wrong finger. Each frame stays still so you can inspect your hand position.</p>
+          </div>
+        </div>
+        <div class="panel mistake-replay-panel">
+          <p class="mistake-replay-progress" id="mistake-replay-progress" role="status"></p>
+          <p class="mistake-replay-message" id="mistake-replay-message" role="status"></p>
+          <div class="mistake-replay-video-frame" id="mistake-replay-video-frame" hidden>
+            <video id="mistake-replay-video" playsinline muted preload="metadata" aria-label="Recording of your hands during this lesson"></video>
+            <canvas id="mistake-replay-overlay" aria-hidden="true"></canvas>
+          </div>
+          <p class="hint" id="mistake-replay-video-note" hidden></p>
+          <p class="mistake-replay-passage" id="mistake-replay-passage" aria-label="Lesson passage with wrong-finger positions marked"></p>
+          <div class="button-row mistake-replay-actions">
+            <button type="button" class="secondary" id="mistake-replay-prev">Previous</button>
+            <button type="button" class="secondary" id="mistake-replay-next">Next</button>
+          </div>
+        </div>
+      </section>
+      <section class="summary-next" aria-labelledby="summary-next-title">
+        <div class="summary-next-heading">
+          <h3 id="summary-next-title">What to practice next</h3>
+          <p id="summary-next-note"></p>
+        </div>
+        <div class="summary-feedback-cards" id="summary-feedback-cards"></div>
+      </section>
       <h3 id="histogram-title">Keystrokes per finger</h3>
       <p class="hint" id="histogram-note"></p>
       <div class="histogram" id="summary-histogram" role="img" aria-labelledby="histogram-title histogram-note"></div>
@@ -645,7 +762,6 @@
       <div id="summary-substitutions"></div>
       <div class="button-row">
         <button type="button" class="primary" id="summary-again">Try again</button>
-        <button type="button" class="secondary" id="summary-choose">Choose another exercise</button>
       </div>
       <h3>Last 10 sessions</h3>
       <div id="history-summary"></div>
@@ -745,6 +861,6 @@
   </aside>
 
   <div class="beat-flash" id="beat-flash" aria-hidden="true"></div>
-  <script type="module" src="js/main.js?v=large-practice-camera-1"></script>
+  <script type="module" src="js/main.js?v=lesson-replay-8"></script>
 </body>
 </html>

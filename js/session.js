@@ -110,12 +110,13 @@ export class TypingSession {
     // Only keys that type exactly one character count (letters, digits, space, punctuation).
     if (typeof key !== "string" || key.length !== 1) return null;
 
-    const targetChar = this.targetText[this.typed.length];
+    const position = this.typed.length;
+    const targetChar = this.targetText[position];
     const correct = key === targetChar;
     this.typed.push({ char: key, correct });
     this.firstCharTime ??= t;
     this.lastCharTime = t;
-    return this.addKeystroke({ code, key, t, kind: "char", correct, targetChar });
+    return this.addKeystroke({ code, key, t, kind: "char", position, correct, targetChar });
   }
 
   addKeystroke(fields) {
@@ -135,9 +136,12 @@ export class TypingSession {
    * @param {number} keystrokeId
    * @param {{status: "correct"|"wrong"|"unavailable", used: string|null, confidence: number|null}} check
    */
-  recordFingerCheck(keystrokeId, check) {
+  recordFingerCheck(keystrokeId, check, replayMarks = null) {
     const keystroke = this.keystrokes.find((k) => k.id === keystrokeId);
-    if (keystroke) keystroke.fingerCheck = check;
+    if (keystroke) {
+      keystroke.fingerCheck = check;
+      if (replayMarks) keystroke.replayMarks = replayMarks;
+    }
   }
 
   charKeystrokes() {
@@ -163,6 +167,13 @@ export class TypingSession {
   /** Everything the summary screen shows. */
   summary() {
     const chars = this.charKeystrokes();
+    const keyAccuracyByKey = {};
+    for (const keystroke of chars) {
+      const key = keystroke.targetChar;
+      if (!keyAccuracyByKey[key]) keyAccuracyByKey[key] = { correct: 0, total: 0 };
+      keyAccuracyByKey[key].total += 1;
+      if (keystroke.correct) keyAccuracyByKey[key].correct += 1;
+    }
     const elapsedMs = this.firstCharTime == null ? 0 : this.lastCharTime - this.firstCharTime;
     const checked = this.keystrokes.filter((k) => k.fingerCheck.status === "correct" || k.fingerCheck.status === "wrong");
     const wrong = checked.filter((k) => k.fingerCheck.status === "wrong");
@@ -183,7 +194,57 @@ export class TypingSession {
       }
     }
 
+    // A wrong letter and a wrong finger are different mistakes. Count only
+    // correctly typed keys that the camera checked for this breakdown.
+    const fingerErrorsByKey = Object.create(null);
+    for (const keystroke of chars) {
+      if (!keystroke.correct || !["correct", "wrong"].includes(keystroke.fingerCheck.status)
+        || keystroke.expectedFingers.length === 0) continue;
+      const code = keystroke.code;
+      const label = code === "Space" ? "Space"
+        : /^Key[A-Z]$/.test(code) ? code.slice(3)
+          : /^Digit[0-9]$/.test(code) ? code.slice(5) : keystroke.key;
+      const stats = fingerErrorsByKey[code] ??= { label, wrong: 0, total: 0, usedCounts: {} };
+      stats.total += 1;
+      if (keystroke.fingerCheck.status === "wrong") {
+        stats.wrong += 1;
+        const used = keystroke.fingerCheck.used;
+        if (FINGERS.includes(used)) stats.usedCounts[used] = (stats.usedCounts[used] ?? 0) + 1;
+      }
+    }
+
+    // Time how quickly a correct, camera-checked press followed the previous
+    // correct character. Longer pauses and corrections are not finger pace.
+    const fingerPaceByFinger = Object.fromEntries(FINGERS.map((finger) => [finger, { totalMs: 0, count: 0 }]));
+    let previousChar = null;
+    for (const keystroke of this.keystrokes) {
+      if (keystroke.kind !== "char") {
+        previousChar = null;
+        continue;
+      }
+      const interval = previousChar == null ? 0 : keystroke.t - previousChar.t;
+      const finger = keystroke.fingerCheck.used;
+      if (previousChar?.correct && keystroke.correct && keystroke.fingerCheck.status === "correct"
+        && FINGERS.includes(finger) && interval >= 40 && interval <= 1500) {
+        fingerPaceByFinger[finger].totalMs += interval;
+        fingerPaceByFinger[finger].count += 1;
+      }
+      previousChar = keystroke;
+    }
+
     const fingerCheckAvailable = checked.length > 0;
+    const wrongFingerEvents = chars
+      .filter((keystroke) => keystroke.fingerCheck.status === "wrong")
+      .map((keystroke) => ({
+        t: keystroke.t,
+        position: keystroke.position,
+        targetChar: keystroke.targetChar,
+        typedChar: keystroke.key,
+        correctKey: keystroke.correct,
+        used: keystroke.fingerCheck.used,
+        expected: keystroke.expectedFingers,
+        marks: keystroke.replayMarks ?? null,
+      }));
     return {
       levelId: this.levelId,
       exerciseIndex: this.exerciseIndex,
@@ -195,6 +256,10 @@ export class TypingSession {
       fingerCheckAvailable,
       fingerAccuracy: fingerCheckAvailable ? (checked.length - wrong.length) / checked.length : null,
       fingerAccuracyByFinger,
+      fingerErrorsByKey,
+      wrongFingerEvents,
+      fingerPaceByFinger,
+      keyAccuracyByKey,
       fingersFor90Percent: fingerCheckAvailable ? fingersCoveringShare(usedCounts) : null,
       histogram: fingerCheckAvailable ? usedFingerHistogram(usedCounts) : expectedFingerHistogram(this.keystrokes),
       topSubstitutions: topSubstitutions(wrong.map((k) => ({ expected: k.expectedFingers, used: k.fingerCheck.used }))),

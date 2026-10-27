@@ -8,6 +8,7 @@ import {
   fingersCoveringShare,
   topSubstitutions,
 } from "../js/session.js";
+import { historyEntry, mostMissedKeysFromHistory } from "../js/summaryView.js";
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
 
@@ -150,6 +151,30 @@ test("finger accuracy and substitutions come from recorded finger checks", () =>
   assert.equal(bars.L_INDEX, 1);
   assert.equal(bars.L_MIDDLE, 2);
   assert.equal(summary.histogram.length, 10);
+  assert.deepEqual(summary.fingerErrorsByKey.KeyF, {
+    label: "F", wrong: 2, total: 3, usedCounts: { L_MIDDLE: 2 },
+  });
+});
+
+test("missed-key history ranks wrong-finger presses and ignores ordinary typos", () => {
+  const session = new TypingSession("fff");
+  const first = session.handleKey({ code: "KeyF", key: "f", t: 100 });
+  const typo = session.handleKey({ code: "KeyD", key: "d", t: 200 });
+  const third = session.handleKey({ code: "KeyF", key: "f", t: 300 });
+  for (const keystroke of [first, typo, third]) {
+    session.recordFingerCheck(keystroke.id, { status: "wrong", used: "R_INDEX", confidence: 0.9 });
+  }
+  const marks = { used: { x: 0.2, y: 0.4 }, expected: [{ x: 0.7, y: 0.4 }] };
+  session.recordFingerCheck(first.id, { status: "wrong", used: "R_INDEX", confidence: 0.9 }, marks);
+  const summary = session.summary();
+  assert.equal(summary.fingerErrorsByKey.KeyF.wrong, 2);
+  assert.equal(summary.fingerErrorsByKey.KeyD, undefined);
+  assert.deepEqual(summary.wrongFingerEvents.map((event) => event.position), [0, 1, 2]);
+  assert.deepEqual(summary.wrongFingerEvents.map((event) => event.t), [100, 200, 300]);
+  assert.deepEqual(summary.wrongFingerEvents[0].marks, marks);
+  const ranked = mostMissedKeysFromHistory([{}, historyEntry(summary)]);
+  assert.equal(ranked[0].code, "KeyF");
+  assert.equal(ranked[0].wrong, 2);
 });
 
 test("fingersCoveringShare: worked examples", () => {

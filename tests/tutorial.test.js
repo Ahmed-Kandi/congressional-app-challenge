@@ -21,12 +21,14 @@ test("key roles: home keys, index reaches, and the space bar", () => {
   assert.equal(keyRole("Space"), "between words");
 });
 
-test("the walk-through moves on only for the right key, then finishes", () => {
+test("the walk-through waits for the right key and finger, then finishes", () => {
   const walk = createWalkthrough(["f", "j", "Space"]);
   assert.equal(walk.current, "f");
   assert.equal(walk.press("KeyD"), "wrong");
   assert.equal(walk.current, "f");
-  assert.equal(walk.press("KeyF"), "correct");
+  assert.equal(walk.press("KeyF", "wrong"), "wrong-finger");
+  assert.equal(walk.current, "f");
+  assert.equal(walk.press("KeyF", "correct"), "correct");
   assert.equal(walk.current, "j");
   assert.equal(walk.press("KeyJ"), "correct");
   assert.equal(walk.done, false);

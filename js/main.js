@@ -28,7 +28,7 @@ import {
 import { ATTRIBUTION_IMPLEMENTED, attributeKeystroke } from "./core/fingerAttribution.js?v=friend-logic-merge-1";
 import { createCalibrationScreen, createKeyboardGridCapture, loadCalibration, pointInVideoFrame, saveCalibration } from "./calibration.js?v=keyboard-discs-1";
 import { LEVELS, getExerciseText, getTutorial } from "./exercises.js";
-import { beatKind, evaluateAttribution, runAttribution, showFingerCheck, showWrongKey } from "./feedback.js?v=friend-logic-merge-1";
+import { beatKind, evaluateAttribution, feedbackMessage, runAttribution, showFingerCheck, showWrongKey } from "./feedback.js?v=friend-logic-merge-1";
 import { buildPrompts, createCollectionSession, describePrompt } from "./debug/dataCollection.js";
 import { createBeatFlash } from "./beatFlash.js";
 import { Recorder, downloadRecording } from "./debug/recorder.js";
@@ -41,9 +41,14 @@ import { calibrationMatchesSides, sideSettingsOf } from "./handSides.js?v=rotati
 import { startKeyboardCapture } from "./keyboard.js";
 import { Overlay } from "./overlay.js?v=friend-logic-merge-1";
 import { createPipeline } from "./pipeline.js";
-import { createTutorialScreen } from "./tutorial.js";
-import { TypingSession } from "./session.js?v=dashboard-finger-accuracy-1";
-import { formatPercent, historyEntry, renderDashboardFingerAccuracy, renderHistory, renderSummary } from "./summaryView.js?v=dashboard-finger-accuracy-1";
+import { createTutorialScreen } from "./tutorial.js?v=lesson-review-1";
+import { createAboutEssayDemo } from "./aboutEssay.js";
+import { renderLessonPaths } from "./lessonPaths.js";
+import { LessonVideoRecorder, timeInClip } from "./lessonVideo.js";
+import { captureFingerMarks, compactReplayFrame, drawReplayMarks, followingFingerMarks } from "./replayAnnotations.js";
+import { renderPracticeRecommendations } from "./practiceRecommendations.js";
+import { TypingSession } from "./session.js?v=lesson-review-1";
+import { formatPercent, historyEntry, renderDashboardFastestFingers, renderDashboardFingerAccuracy, renderDashboardMissedKeys, renderHistory, renderSummary } from "./summaryView.js?v=lesson-review-1";
 import { KEYS, storage } from "./storage.js";
 
 // ---------- Element lookup ----------
@@ -82,6 +87,15 @@ const ui = {
   dashboardPreviewStatus: $("dashboard-preview-status"),
   dashboardFingerAccuracy: $("dashboard-finger-accuracy"),
   dashboardFingerAccuracyNote: $("dashboard-finger-accuracy-note"),
+  dashboardFastestList: $("dashboard-fastest-list"),
+  dashboardFastestNote: $("dashboard-fastest-note"),
+  dashboardMissedList: $("dashboard-missed-list"),
+  dashboardMissedNote: $("dashboard-missed-note"),
+  dashboardWpmPanel: $("dashboard-wpm-panel"),
+  dashboardWpmStart: $("dashboard-wpm-start"),
+  dashboardWpmResults: $("dashboard-wpm-results"),
+  dashboardWpmLast: $("dashboard-wpm-last"),
+  dashboardWpmBest: $("dashboard-wpm-best"),
   typingCopy: $("typing-copy"),
   // standalone baseline typing test
   typingTestInput: $("typing-test-input"),
@@ -159,6 +173,7 @@ const ui = {
   liveTyped: $("live-typed"),
   exerciseQuit: $("exercise-quit"),
   exerciseCameraStatus: $("exercise-camera-status"),
+  tutorialCameraStatus: $("tutorial-camera-status"),
   // summary
   summaryHeadline: $("summary-headline"),
   summaryHistogram: $("summary-histogram"),
@@ -168,8 +183,20 @@ const ui = {
   summaryWpm: $("summary-wpm"),
   summaryCharAccuracy: $("summary-char-accuracy"),
   summaryFingerAccuracy: $("summary-finger-accuracy"),
+  summaryFeedbackCards: $("summary-feedback-cards"),
+  summaryNextNote: $("summary-next-note"),
   summaryAgain: $("summary-again"),
   summaryChoose: $("summary-choose"),
+  mistakeReplaySection: $("mistake-replay-section"),
+  mistakeReplayPassage: $("mistake-replay-passage"),
+  mistakeReplayProgress: $("mistake-replay-progress"),
+  mistakeReplayMessage: $("mistake-replay-message"),
+  mistakeReplayVideoFrame: $("mistake-replay-video-frame"),
+  mistakeReplayVideo: $("mistake-replay-video"),
+  mistakeReplayOverlay: $("mistake-replay-overlay"),
+  mistakeReplayVideoNote: $("mistake-replay-video-note"),
+  mistakeReplayPrev: $("mistake-replay-prev"),
+  mistakeReplayNext: $("mistake-replay-next"),
   // labeled recording tool
   collectIntro: $("collect-intro"),
   collectRunning: $("collect-running"),
@@ -221,10 +248,11 @@ const skipSetup = params.get("skipSetup") === "1";
 // browser tests (navigator.webdriver), which drive replays through it.
 const debugAvailable = params.get("debug") === "1" || navigator.webdriver === true;
 // ?reset=1 starts over at Level 1 (for demos): clears lesson progress and
-// session history. The chosen camera and its settings are kept.
+// typing results. The chosen camera and its settings are kept.
 if (params.get("reset") === "1") {
   storage.remove(KEYS.exerciseProgress);
   storage.remove(KEYS.history);
+  storage.remove(KEYS.typingTestResults);
   params.delete("reset");
   window.history.replaceState(null, "", location.pathname + (params.size ? `?${params}` : "") + location.hash);
 }
@@ -240,8 +268,10 @@ const state = {
   setupHandsReady: false,
   session: null,
   exerciseActive: false,
+  exerciseRunId: 0,
   targetSpans: [],
   lastSummary: null,
+  lastExercise: null,
   calibration: loadCalibration(),
   calibrationBeforeReplay: null,
   pendingFingerChecks: 0,
@@ -249,6 +279,7 @@ const state = {
   setupStarted: false,
   cameraLost: false, // the camera stopped by itself; reconnect when it comes back
   dashboardSetupComplete: false,
+  hasCompletedCameraSetup: storage.getJSON(KEYS.cameraSetupCompleted, false) === true,
   dashboardPreviewStream: null,
   dashboardPreviewRequestId: 0,
   typingTestNextScreen: "setup",
@@ -266,6 +297,9 @@ function clearSavedCalibration() {
 const frameBuffer = new FrameBuffer();
 const pipeline = createPipeline({ frameBuffer });
 const overlay = new Overlay(ui.overlayCanvas, ui.video);
+const lessonVideo = new LessonVideoRecorder();
+let lessonRecordingSession = null;
+let lessonTrackingFrames = [];
 const beatFlash = createBeatFlash($("beat-flash"));
 const dashboardPreviewOverlay = new Overlay(ui.dashboardPreviewOverlay, ui.dashboardPreviewVideo);
 dashboardPreviewOverlay.setHandsVisible(false);
@@ -280,13 +314,21 @@ const STAGE_SLOTS = {
 };
 
 const TYPING_TEST_PASSAGE = "Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do: once or twice she had peeped into the book her sister was reading, but it had no pictures or conversations in it, \"and what is the use of a book,\" thought Alice \"without pictures or conversations?\"";
+const aboutEssayDemo = createAboutEssayDemo({ section: $("about-who"), replayButton: $("about-essay-replay") });
 let typingTestWpmIntervalId = null;
+let mistakeReplayIndex = 0;
+let mistakeReplaySpans = [];
 let activePageTurn = null;
 let resetLandingAnimations = () => {};
 let startLandingAnimations = () => {};
 
 function renderScreen(name) {
   if (state.screen === "typing-test" && name !== "typing-test") stopTypingTest();
+  if (state.screen === "summary" && name !== "summary") {
+    stopMistakeReplay();
+    clearLessonRecording();
+  }
+  if (state.screen === "about" && name !== "about") aboutEssayDemo.leave();
   state.screen = name;
   const navItems = [
     [$("landing-nav-how"), null],
@@ -521,11 +563,17 @@ function finishTypingTest(now = performance.now()) {
   ui.typingTestInput.disabled = true;
   ui.typingTestStart.disabled = false;
   ui.typingTestStart.textContent = "Try again";
-  ui.typingTestNext.textContent = state.typingTestNextScreen === "choose"
-    ? "Continue to lesson choice"
-    : "Continue to camera setup";
+  ui.typingTestNext.textContent = state.typingTestNextScreen === "dashboard"
+    ? "Back to dashboard"
+    : state.typingTestNextScreen === "choose" ? "Continue to lesson choice" : "Continue to camera setup";
   ui.typingTestNext.hidden = false;
-  updateTypingTestDisplay(now);
+  const metrics = updateTypingTestDisplay(now);
+  const priorResults = storage.getJSON(KEYS.typingTestResults, []);
+  const results = Array.isArray(priorResults) ? priorResults : [];
+  storage.setJSON(KEYS.typingTestResults, [
+    { wpm: metrics.wpm, accuracy: metrics.accuracy, finishedAt: new Date().toISOString() },
+    ...results,
+  ].slice(0, 20));
   renderTypingTestTarget();
   ui.typingTestStatus.textContent = `Passage complete! ${ui.typingTestWpm.textContent} WPM at ${ui.typingTestAccuracy.textContent} accuracy.`;
 }
@@ -592,6 +640,7 @@ function initTypingTestScreen() {
   });
   ui.typingTestNext.addEventListener("click", () => {
     if (state.typingTestNextScreen === "choose") showScreen("choose");
+    else if (state.typingTestNextScreen === "dashboard") openDashboard();
     else openCameraSetup();
   });
   screenEnterHandlers["typing-test"] = resetTypingTest;
@@ -802,6 +851,8 @@ async function openDashboardCameraPreview() {
 }
 
 function leaveCurrentCameraFlow() {
+  state.exerciseRunId += 1;
+  clearLessonRecording();
   if (collection) cancelCollection();
   if (ui.dashboardCameraPreviewDialog.open) ui.dashboardCameraPreviewDialog.close();
   closeDashboardCameraPreview();
@@ -818,7 +869,11 @@ function leaveCurrentCameraFlow() {
 
 function openDashboard() {
   if (state.screen !== "landing") leaveCurrentCameraFlow();
-  showScreen("dashboard");
+  return showScreen("dashboard");
+}
+
+function openDashboardLessons() {
+  return openDashboard().then(() => setDashboardView("lessons", true));
 }
 
 function updateDashboardChecklist() {
@@ -837,10 +892,15 @@ function updateDashboardChecklist() {
   const allComplete = Object.values(complete).every(Boolean);
   const panel = ui.dashboardStartTitle.closest(".dashboard-start-panel");
   panel.classList.toggle("is-camera-ready", allComplete);
-  ui.dashboardStartTitle.textContent = allComplete ? "Camera is all set up!" : "Let's get you set up.";
+  panel.classList.toggle("has-camera-history", state.hasCompletedCameraSetup);
+  ui.dashboardStartTitle.textContent = allComplete
+    ? "Camera is all set up!"
+    : state.hasCompletedCameraSetup ? "Welcome back." : "Let's get you set up.";
   ui.dashboardStartDescription.textContent = allComplete
     ? "Your camera and keyboard are ready for personalized practice."
-    : "Once HighType can see your keyboard, you'll be all set for personalized practice.";
+    : state.hasCompletedCameraSetup
+      ? "Explore lessons now, or set up your camera again for personalized coaching."
+      : "Once HighType can see your keyboard, you'll be all set for personalized practice.";
   ui.dashboardCameraStart.textContent = allComplete ? "Recalibrate camera" : "Set up camera";
   ui.dashboardCameraStart.classList.toggle("primary", !allComplete);
   ui.dashboardCameraStart.classList.toggle("secondary", allComplete);
@@ -848,9 +908,19 @@ function updateDashboardChecklist() {
 }
 
 function updateDashboardFirstVisit() {
-  const needsSetup = !state.dashboardSetupComplete;
+  const needsSetup = !state.hasCompletedCameraSetup;
   $("screen-dashboard").classList.toggle("is-first-setup", needsSetup);
   ui.dashboardFirstVisit.hidden = !needsSetup;
+}
+
+function updateDashboardWpm() {
+  ui.dashboardWpmPanel.hidden = !state.hasCompletedCameraSetup && !state.dashboardSetupComplete;
+  const stored = storage.getJSON(KEYS.typingTestResults, []);
+  const results = Array.isArray(stored) ? stored.filter((result) => Number.isFinite(result?.wpm)) : [];
+  ui.dashboardWpmResults.hidden = results.length === 0;
+  if (!results.length) return;
+  ui.dashboardWpmLast.textContent = String(results[0].wpm);
+  ui.dashboardWpmBest.textContent = String(Math.max(...results.map((result) => result.wpm)));
 }
 
 function setDashboardView(view, focusHeading = false) {
@@ -888,9 +958,14 @@ function returnToLanding(event, anchorId = null) {
 }
 
 function initLandingScreen() {
+  screenEnterHandlers.about = aboutEssayDemo.enter;
   screenEnterHandlers.dashboard = () => {
     updateDashboardChecklist();
-    renderDashboardFingerAccuracy(ui.dashboardFingerAccuracy, ui.dashboardFingerAccuracyNote, storage.loadHistory());
+    const history = storage.loadHistory();
+    renderDashboardFingerAccuracy(ui.dashboardFingerAccuracy, ui.dashboardFingerAccuracyNote, history);
+    renderDashboardFastestFingers(ui.dashboardFastestList, ui.dashboardFastestNote, history);
+    renderDashboardMissedKeys(ui.dashboardMissedList, ui.dashboardMissedNote, history);
+    updateDashboardWpm();
     renderLevelList(ui.dashboardLevelList);
     setDashboardView("overview");
     updateDashboardFirstVisit();
@@ -911,6 +986,10 @@ function initLandingScreen() {
     showScreen("about");
   });
   ui.dashboardCameraStart.addEventListener("click", openCameraSetup);
+  ui.dashboardWpmStart.addEventListener("click", () => {
+    leaveCurrentCameraFlow();
+    openTypingTest("dashboard");
+  });
   ui.dashboardCameraPreview.addEventListener("click", openDashboardCameraPreview);
   ui.dashboardCameraPreviewClose.addEventListener("click", () => ui.dashboardCameraPreviewDialog.close());
   ui.dashboardCameraPreviewDialog.addEventListener("close", closeDashboardCameraPreview);
@@ -1891,6 +1970,8 @@ function initCalibrateScreen() {
     pendingKeyboardGrid = null;
     reviewingGrid = false;
     state.dashboardSetupComplete = true;
+    state.hasCompletedCameraSetup = true;
+    storage.setJSON(KEYS.cameraSetupCompleted, true);
     ui.stage.classList.remove("is-mapping");
     gridCapture.stop();
     openDashboard();
@@ -1929,33 +2010,24 @@ function exerciseProgress() {
 }
 
 function nextExerciseIndex(levelId) {
-  return Number(exerciseProgress()[levelId] ?? 0);
+  const saved = Number(exerciseProgress()[levelId] ?? 0);
+  return Number.isFinite(saved) ? Math.max(0, Math.floor(saved)) : 0;
 }
 
 function advanceExerciseIndex(levelId, finishedIndex) {
-  storage.setJSON(KEYS.exerciseProgress, { ...exerciseProgress(), [levelId]: finishedIndex + 1 });
+  storage.setJSON(KEYS.exerciseProgress, {
+    ...exerciseProgress(),
+    [levelId]: Math.max(nextExerciseIndex(levelId), finishedIndex + 1),
+  });
 }
 
 function renderLevelList(container = ui.levelList) {
-  container.replaceChildren(
-    ...LEVELS.map((level) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "level-card";
-      const index = nextExerciseIndex(level.id) % level.items.length;
-      const title = document.createElement("strong");
-      title.textContent = level.title;
-      const description = document.createElement("span");
-      description.textContent = `${level.description} Exercise ${index + 1} of ${level.items.length}.`;
-      button.append(title, description);
-      button.addEventListener("click", () => startExercise(level.id, index));
-      return button;
-    }),
-  );
+  renderLessonPaths(container, { progress: exerciseProgress(), onSelect: startExercise });
 }
 
 function initTutorialScreen() {
   tutorialScreen = createTutorialScreen({
+    checkFinger: checkTutorialFinger,
     elements: {
       kicker: $("tutorial-kicker"),
       title: $("tutorial-title"),
@@ -1964,14 +2036,28 @@ function initTutorialScreen() {
       tip: $("tutorial-tip"),
       keyboard: $("tutorial-keyboard"),
       keyCards: $("tutorial-key-cards"),
+      handGuide: $("tutorial-hand-guide"),
+      handCaption: $("tutorial-hand-caption"),
       prompt: $("tutorial-prompt"),
-      progress: $("tutorial-progress"),
       status: $("tutorial-status"),
       startButton: $("tutorial-start"),
     },
   });
   $("tutorial-start").addEventListener("click", () => tutorialScreen.start());
   $("tutorial-skip").addEventListener("click", () => tutorialScreen.start());
+  screenEnterHandlers.tutorial = () => resumeCameraForPractice(ui.tutorialCameraStatus);
+}
+
+async function checkTutorialFinger(keyEvent, expected) {
+  const unavailable = { status: "unavailable", used: null, confidence: null };
+  if (!state.dashboardSetupComplete || !state.stream || !state.tracker?.running || !usableCalibration() || pipeline.source !== "live") {
+    return unavailable;
+  }
+  await new Promise((resolve) => setTimeout(resolve, ATTRIBUTION_DELAY_MS));
+  if (state.screen !== "tutorial") return unavailable;
+  const { result, problem } = runAttribution(attributeKeystroke, keyEvent, frameBuffer, usableCalibration());
+  if (problem) console.warn(problem);
+  return evaluateAttribution(result, expected);
 }
 
 function initChooseScreen() {
@@ -2000,6 +2086,9 @@ function startExercise(levelId, exerciseIndex, { skipTutorial = false } = {}) {
 }
 
 function startExerciseWithText(text, info, title) {
+  state.exerciseRunId += 1;
+  clearLessonRecording();
+  state.lastExercise = { text, info, title };
   state.session = new TypingSession(text, info);
   state.exerciseActive = true;
   ui.exerciseTitle.textContent = title;
@@ -2015,29 +2104,46 @@ function startExerciseWithText(text, info, title) {
   });
 }
 
-async function resumeCameraForPractice() {
-  ui.exerciseCameraStatus.hidden = true;
+async function resumeCameraForPractice(statusElement = ui.exerciseCameraStatus) {
+  statusElement.hidden = true;
   // The app closes camera tracks when leaving setup for the dashboard. Reopen
   // the selected device for lessons that have completed camera calibration.
-  if (!state.dashboardSetupComplete) return;
-  ui.exerciseCameraStatus.hidden = false;
-  ui.exerciseCameraStatus.textContent = "Reconnecting the camera for finger coaching…";
+  if (!state.dashboardSetupComplete || (statusElement === ui.tutorialCameraStatus && !usableCalibration())) {
+    if (statusElement === ui.tutorialCameraStatus) {
+      statusElement.hidden = false;
+      statusElement.textContent = "Camera calibration is unavailable for this visit. The walkthrough will check keys only.";
+    }
+    return;
+  }
+  statusElement.hidden = false;
+  statusElement.textContent = "Reconnecting the camera for finger coaching…";
   if (!cameraAllowedHere()) {
-    ui.exerciseCameraStatus.textContent = CAMERA_ERROR_TEXT.insecure;
+    statusElement.textContent = CAMERA_ERROR_TEXT.insecure;
     return;
   }
   state.setupStarted = true;
   if (!state.stream) await startCamera(rememberedCamera());
   if (!state.stream) {
-    ui.exerciseCameraStatus.textContent = ui.setupError.textContent || CAMERA_ERROR_TEXT.unknown;
+    statusElement.textContent = ui.setupError.textContent || CAMERA_ERROR_TEXT.unknown;
     return;
+  }
+  if (statusElement === ui.exerciseCameraStatus && state.screen === "exercise" && state.exerciseActive
+    && state.session && lessonRecordingSession !== state.session && pipeline.source !== "replay") {
+    if (lessonVideo.start(state.stream, { rotated: state.settings.rotated, flipped: state.settings.flipView })) {
+      lessonRecordingSession = state.session;
+    }
   }
   if (!state.tracker?.running) await startTracking();
   if (!state.tracker?.running) {
-    ui.exerciseCameraStatus.textContent = ui.setupError.textContent || "Camera is on, but hand tracking is unavailable.";
+    statusElement.textContent = ui.setupError.textContent || "Camera is on, but hand tracking is unavailable.";
     return;
   }
-  ui.exerciseCameraStatus.hidden = true;
+  if (statusElement === ui.exerciseCameraStatus && lessonRecordingSession === state.session) {
+    statusElement.textContent = "Camera recording for this lesson's replay. Video stays in this tab.";
+    statusElement.hidden = false;
+  } else {
+    statusElement.hidden = true;
+  }
 }
 
 function renderTargetText() {
@@ -2118,7 +2224,9 @@ function scheduleFingerCheck(session, keystroke, keyEvent) {
 function runFingerCheck(session, keystroke, keyEvent) {
   const { result, problem } = runAttribution(attributeKeystroke, keyEvent, frameBuffer, usableCalibration());
   const check = evaluateAttribution(result, keystroke.expectedFingers);
-  session.recordFingerCheck(keystroke.id, check);
+  const marks = check.status === "wrong" && keystroke.kind === "char"
+    ? captureFingerMarks(frameBuffer, keyEvent.t, check.used, keystroke.expectedFingers) : null;
+  session.recordFingerCheck(keystroke.id, check, marks);
   ui.debugLastAttribution.textContent = problem ?? (result ? `${result.finger} (${result.confidence.toFixed(2)})` : "null");
   if (problem) console.warn(problem);
   // Only update the screen if this keystroke belongs to the exercise on screen.
@@ -2139,16 +2247,22 @@ function waitForFingerChecks() {
 }
 
 function quitExercise() {
+  state.exerciseRunId += 1;
   replayer.stop();
   state.exerciseActive = false;
   state.session = null;
+  clearLessonRecording();
   showScreen("choose");
 }
 
 async function finishExercise() {
   state.exerciseActive = false;
   const session = state.session;
+  const runId = state.exerciseRunId;
   await waitForFingerChecks(); // the last keystroke's check arrives a moment later
+  if (runId !== state.exerciseRunId) return;
+  await lessonVideo.stop();
+  if (runId !== state.exerciseRunId) return;
   state.lastSummary = session.summary();
   // Replays are for debugging, so they do not count as practice in the history.
   if (pipeline.source !== "replay") {
@@ -2171,6 +2285,11 @@ function initExerciseScreen() {
 
 function showSummary() {
   if (!state.lastSummary) return;
+  ui.mistakeReplaySection.hidden = !(state.lastSummary.wrongFingerEvents?.length > 0);
+  const { levelId, exerciseIndex } = state.lastSummary;
+  const levelPosition = LEVELS.findIndex((level) => level.id === levelId);
+  const level = LEVELS[levelPosition];
+  const hasNextLesson = level && (exerciseIndex + 1 < level.items.length || levelPosition + 1 < LEVELS.length);
   renderSummary(
     {
       headline: ui.summaryHeadline,
@@ -2183,17 +2302,153 @@ function showSummary() {
     },
     state.lastSummary,
   );
+  renderPracticeRecommendations(
+    ui.summaryFeedbackCards,
+    ui.summaryNextNote,
+    state.lastSummary,
+    (drill) => startExerciseWithText(drill.text, { levelId: null, exerciseIndex: null }, drill.title),
+    () => {
+      if (levelPosition < 0) return openDashboardLessons();
+      if (exerciseIndex + 1 < level.items.length) return startExercise(levelId, exerciseIndex + 1);
+      const nextLevel = LEVELS[levelPosition + 1];
+      if (nextLevel) return startExercise(nextLevel.id, 0);
+      return openDashboardLessons();
+    },
+    hasNextLesson ? "Try the next lesson" : "Choose a lesson",
+  );
   renderHistory(ui.historySummary, storage.loadHistory());
+  if (!ui.mistakeReplaySection.hidden) showMistakeReplay();
+}
+
+function clearLessonRecording() {
+  stopMistakeReplay();
+  ui.mistakeReplayVideo.pause();
+  ui.mistakeReplayVideo.playbackRate = 1;
+  ui.mistakeReplayVideo.removeAttribute("src");
+  ui.mistakeReplayVideo.load();
+  drawReplayMarks(ui.mistakeReplayOverlay, null);
+  lessonVideo.clear();
+  lessonRecordingSession = null;
+  lessonTrackingFrames = [];
+}
+
+function replayTimeFor(mistake) {
+  if (!lessonVideo.clip || !Number.isFinite(mistake?.t)) return 0;
+  const clip = lessonVideo.clip;
+  return Math.min(clip.durationMs / 1000, timeInClip(mistake.t, clip) + 0.1);
+}
+
+function replayFeedbackText(mistake) {
+  const pressed = mistake.typedChar === " " ? "Space" : `“${mistake.typedChar.toUpperCase()}”`;
+  const target = mistake.targetChar === " " ? "Space" : `“${mistake.targetChar.toUpperCase()}”`;
+  const fingerMessage = feedbackMessage({ status: "wrong", used: mistake.used }, mistake.expected);
+  const keyContext = mistake.correctKey ? `on ${target}` : `on ${target} (you typed ${pressed} instead)`;
+  return fingerMessage.replace(/^(Wrong (?:finger|hand)):/, `$1 ${keyContext}:`);
+}
+
+function seekToMistake(index) {
+  mistakeReplayIndex = index;
+  const mistake = state.lastSummary?.wrongFingerEvents?.[index];
+  renderMistakeReplayFrame();
+  if (lessonVideo.clip && mistake && ui.mistakeReplayVideo.readyState > 0) {
+    ui.mistakeReplayVideo.pause();
+    const targetTime = replayTimeFor(mistake);
+    if (Math.abs(ui.mistakeReplayVideo.currentTime - targetTime) > 0.015) {
+      ui.mistakeReplayVideo.currentTime = targetTime;
+    } else {
+      renderReplayFreezeFrame();
+    }
+  }
+}
+
+function stopMistakeReplay() {
+  ui.mistakeReplayVideo.pause();
+  ui.mistakeReplayVideo.playbackRate = 1;
+}
+
+function renderReplayFreezeFrame() {
+  if (!lessonVideo.clip) return;
+  const mistake = state.lastSummary?.wrongFingerEvents?.[mistakeReplayIndex];
+  if (!mistake) return;
+  const marks = followingFingerMarks(lessonTrackingFrames,
+    lessonVideo.clip.startedAt + ui.mistakeReplayVideo.currentTime * 1000,
+    mistake.used, mistake.expected);
+  drawReplayMarks(ui.mistakeReplayOverlay, marks, {
+    rotated: lessonVideo.clip.rotated,
+    flipped: lessonVideo.clip.flipped,
+  });
+}
+
+function renderMistakeReplayFrame() {
+  const mistakes = state.lastSummary?.wrongFingerEvents ?? [];
+  const mistake = mistakes[mistakeReplayIndex];
+  if (!mistake) return;
+  ui.mistakeReplayProgress.textContent = `Mistake ${mistakeReplayIndex + 1} of ${mistakes.length}`;
+  mistakeReplaySpans.forEach((span) => span.classList.remove("is-current"));
+  mistakeReplaySpans[mistake.position]?.classList.add("is-current");
+
+  ui.mistakeReplayMessage.textContent = replayFeedbackText(mistake);
+  ui.mistakeReplayPrev.disabled = mistakeReplayIndex === 0;
+  ui.mistakeReplayNext.disabled = mistakeReplayIndex === mistakes.length - 1;
+}
+
+function showMistakeReplay() {
+  stopMistakeReplay();
+  const mistakes = state.lastSummary?.wrongFingerEvents ?? [];
+  if (!mistakes.length) return;
+  const clip = lessonVideo.clip;
+  ui.mistakeReplayVideoFrame.hidden = !clip;
+  ui.mistakeReplayVideoNote.hidden = Boolean(clip);
+  if (!clip) ui.mistakeReplayVideoNote.textContent = "Video was not available for this lesson. You can still step through each mistake here.";
+  else {
+    ui.mistakeReplayVideoFrame.classList.toggle("is-rotated", clip.rotated);
+    ui.mistakeReplayVideoFrame.classList.toggle("is-flipped", clip.flipped);
+    ui.mistakeReplayVideo.src = clip.url;
+    ui.mistakeReplayVideo.load();
+  }
+  const markedPositions = new Set(mistakes.map((mistake) => mistake.position));
+  mistakeReplaySpans = [...state.lastSummary.targetText].map((char, position) => {
+    const span = document.createElement("span");
+    span.textContent = char;
+    if (markedPositions.has(position)) span.classList.add("is-mistake");
+    return span;
+  });
+  ui.mistakeReplayPassage.replaceChildren(...mistakeReplaySpans);
+  mistakeReplayIndex = 0;
+  renderMistakeReplayFrame();
+  if (!clip) return;
+  if (ui.mistakeReplayVideo.readyState > 0) seekToMistake(0);
 }
 
 function initSummaryScreen() {
   screenEnterHandlers.summary = showSummary;
   ui.summaryAgain.addEventListener("click", () => {
-    const { levelId, exerciseIndex } = state.lastSummary;
-    if (levelId == null) showScreen("choose"); // a replay has no exercise to repeat
-    else startExercise(levelId, exerciseIndex, { skipTutorial: true }); // a retry doesn't need the tutorial again
+    if (pipeline.source === "replay") return showScreen("choose");
+    if (!state.lastExercise) return showScreen("choose");
+    const { text, info, title } = state.lastExercise;
+    startExerciseWithText(text, info, title);
   });
-  ui.summaryChoose.addEventListener("click", () => showScreen("choose"));
+  ui.summaryChoose.addEventListener("click", openDashboardLessons);
+  ui.mistakeReplayPrev.addEventListener("click", () => {
+    seekToMistake(Math.max(0, mistakeReplayIndex - 1));
+  });
+  ui.mistakeReplayNext.addEventListener("click", () => {
+    seekToMistake(Math.min((state.lastSummary?.wrongFingerEvents?.length ?? 1) - 1, mistakeReplayIndex + 1));
+  });
+  ui.mistakeReplayVideo.addEventListener("loadedmetadata", () => {
+    if (state.screen !== "summary" || !lessonVideo.clip) return;
+    ui.mistakeReplayOverlay.width = ui.mistakeReplayVideo.videoWidth;
+    ui.mistakeReplayOverlay.height = ui.mistakeReplayVideo.videoHeight;
+    seekToMistake(mistakeReplayIndex);
+  });
+  ui.mistakeReplayVideo.addEventListener("loadeddata", renderReplayFreezeFrame);
+  ui.mistakeReplayVideo.addEventListener("seeked", renderReplayFreezeFrame);
+  ui.mistakeReplayVideo.addEventListener("error", () => {
+    if (state.screen !== "summary") return;
+    ui.mistakeReplayVideoNote.hidden = false;
+    ui.mistakeReplayVideoNote.textContent = "This browser could not show the recording. You can still step through each mistake here.";
+    ui.mistakeReplayVideoFrame.hidden = true;
+  });
 }
 
 // ---------- Keyboard ----------
@@ -2541,7 +2796,12 @@ function updateDebugStats() {
 
 // ---------- Frame flow ----------
 
-pipeline.onFrame((frame) => {
+pipeline.onFrame((frame, from) => {
+  if (from === "live" && state.screen === "exercise" && lessonRecordingSession === state.session
+    && lessonVideo.capture?.recorder.state === "recording") {
+    const last = lessonTrackingFrames.at(-1);
+    if (!last || frame.t - last.t >= 25) lessonTrackingFrames.push(compactReplayFrame(frame));
+  }
   overlay.draw(frame);
   if (state.screen === "setup") updateSetupIndicators(frame);
 });
@@ -2549,6 +2809,15 @@ pipeline.onFrame((frame) => {
 // ---------- Start ----------
 
 function start() {
+  // Earlier versions saved calibration but did not remember that setup was finished.
+  // Read that evidence before discarding the position-specific calibration below.
+  if (!state.hasCompletedCameraSetup && (
+    Boolean(state.calibration?.baselines) ||
+    storage.loadHistory().some((entry) => entry?.fingerAccuracy != null)
+  )) {
+    state.hasCompletedCameraSetup = true;
+    storage.setJSON(KEYS.cameraSetupCompleted, true);
+  }
   clearSavedCalibration();
   ui.debugToggle.hidden = !debugAvailable;
   ui.stageCameraOn.addEventListener("click", turnCameraOn);
