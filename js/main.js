@@ -39,17 +39,17 @@ import { FrameBuffer } from "./frameBuffer.js";
 import { HandTracker } from "./handTracker.js?v=rotation-calibration-1";
 import { calibrationMatchesSides, sideSettingsOf } from "./handSides.js?v=rotation-calibration-1";
 import { startKeyboardCapture } from "./keyboard.js";
-import { Overlay } from "./overlay.js?v=site-fix-1";
+import { Overlay } from "./overlay.js?v=site-fix-2";
 import { createPipeline } from "./pipeline.js";
-import { createTutorialScreen } from "./tutorial.js?v=site-fix-1";
+import { createTutorialScreen } from "./tutorial.js?v=site-fix-2";
 import { createAboutEssayDemo } from "./aboutEssay.js";
 import { renderLessonPaths } from "./lessonPaths.js";
-import { LessonVideoRecorder, timeInClip } from "./lessonVideo.js?v=site-fix-1";
-import { captureFingerMarks, compactReplayFrame, drawReplayMarks, followingFingerMarks } from "./replayAnnotations.js";
-import { renderPracticeRecommendations } from "./practiceRecommendations.js?v=site-fix-1";
-import { TypingSession } from "./session.js?v=site-fix-1";
-import { formatPercent, historyEntry, renderDashboardFastestFingers, renderDashboardFingerAccuracy, renderDashboardMissedKeys, renderHistory, renderSummary } from "./summaryView.js?v=site-fix-1";
-import { KEYS, storage } from "./storage.js?v=site-fix-1";
+import { LessonVideoRecorder, timeInClip } from "./lessonVideo.js?v=site-fix-2";
+import { captureFingerMarks, compactReplayFrame, drawReplayMarks, followingFingerMarks } from "./replayAnnotations.js?v=site-fix-2";
+import { renderPracticeRecommendations } from "./practiceRecommendations.js?v=site-fix-2";
+import { TypingSession } from "./session.js?v=site-fix-2";
+import { formatPercent, historyEntry, renderDashboardFastestFingers, renderDashboardFingerAccuracy, renderDashboardMissedKeys, renderHistory, renderSummary } from "./summaryView.js?v=site-fix-2";
+import { KEYS, storage } from "./storage.js?v=site-fix-2";
 
 // ---------- Element lookup ----------
 
