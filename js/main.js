@@ -792,7 +792,7 @@ async function startTracking() {
 function openCameraSetup() {
   clearSavedCalibration();
   state.dashboardSetupComplete = false;
-  showScreen("setup");
+  const pageTurned = showScreen("setup");
   if (state.setupStarted) return;
   state.setupStarted = true;
   if (!cameraAllowedHere()) {
@@ -801,8 +801,14 @@ function openCameraSetup() {
     fillCameraPicker(ui.cameraPicker, [], null);
     return;
   }
-  startCamera(rememberedCamera());
-  startTracking();
+  // Start the camera and load hand tracking once the page turn has finished:
+  // loading the tracker keeps the browser busy, and doing it during the
+  // animation stretched an 0.85 s page turn to about 5 s.
+  pageTurned.then(() => {
+    if (state.screen !== "setup" || !state.setupStarted) return; // left setup already
+    startCamera(rememberedCamera());
+    startTracking();
+  });
 }
 
 function closeDashboardCameraPreview() {
