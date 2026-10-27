@@ -1,5 +1,5 @@
 import { FINGERTIP_BY_FINGER_NAME, fingertipLocation } from "./landmarks.js";
-import { drawFingerStatusMark, FINGER_STATUS_COLORS } from "./overlay.js";
+import { drawFingerStatusMark, FINGER_STATUS_COLORS } from "./overlay.js?v=site-fix-1";
 
 /** Save only the fingertip positions needed to annotate a wrong-finger press. */
 export function captureFingerMarks(frameBuffer, eventTime, usedFinger, expectedFingers) {
